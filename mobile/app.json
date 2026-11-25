@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "MR Rokesh Mail",
+    "slug": "mrrokesh-mail",
+    "scheme": "mrrokesh-mail",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.mrrokesh.mail",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
+    },
+    "android": {
+      "package": "com.mrrokesh.mail",
+      "usesCleartextTraffic": true
+    },
+    "plugins": ["expo-router", "expo-secure-store"],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}
