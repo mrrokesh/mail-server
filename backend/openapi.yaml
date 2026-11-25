@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: MR Rokesh Mail API
-  version: 0.2.0
-  summary: Control plane for tenants, mail, billing, and DNS.
+  version: 0.3.0
+  summary: Control plane for tenants, mail, billing, DNS, and v1 modules.
   description: |
     Authenticated routes take `Authorization: Bearer <access>` (15 minutes).
     Refresh tokens are opaque, last 30 days, and are also set as the HttpOnly
@@ -24,6 +24,14 @@ info:
     is the same handler as `/signup` and also accepts `{ name, email, password, organization?, plan? }`.
     `POST /api/v1/auth/sign-out` matches `/logout`. Password reset requests also accept
     `/auth/password/reset-request` and `/auth/password-resets`.
+
+    When MFA is on, login with `totpCode` returns a session. Login without it returns
+    `{ mfaRequired: true, challengeToken }`. `POST /api/v1/auth/mfa/verify` exchanges that
+    challenge and `code` (or `totpCode`) for a session.
+
+    v1 Drive, Docs, Meet, booking, tasks, notes, AI, compliance, and SSO records are
+    process memory. Collabora and LiveKit are stub adapters. SSO metadata is AES-256-GCM
+    and is never returned. ActiveSync and EWS are flags only; Stalwart serves the protocols.
 servers:
   - url: http://127.0.0.1:4000
     description: Local API
@@ -37,6 +45,14 @@ tags:
   - name: audit
   - name: billing
   - name: mail
+  - name: drive
+  - name: docs
+  - name: meet
+  - name: booking
+  - name: tasks
+  - name: ai
+  - name: compliance
+  - name: sso
 paths:
   /health:
     get:
@@ -1067,6 +1083,395 @@ paths:
       responses:
         '200':
           description: Method responses.
+  /api/v1/plans:
+    get:
+      operationId: listWebPlans
+      tags: [billing]
+      summary: Plan catalog in the web pricing shape
+      security: []
+      responses:
+        '200':
+          description: Plans with INR prices and highlight lines.
+  /api/v1/auth/mfa/verify:
+    post:
+      operationId: verifyMfa
+      tags: [auth]
+      summary: Finish sign-in with a challenge token and TOTP code
+      security: []
+      responses:
+        '200':
+          description: Session. Same body as login.
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/drive/files:
+    get:
+      operationId: listDriveFiles
+      tags: [drive]
+      summary: List drive files for the tenant
+      responses:
+        '200':
+          description: Files plus plan upload and storage caps.
+    post:
+      operationId: createDriveFile
+      tags: [drive]
+      summary: Record an upload stub
+      responses:
+        '201':
+          description: File metadata.
+        '413':
+          $ref: '#/components/responses/Error'
+  /api/v1/drive/files/{id}/shares:
+    post:
+      operationId: createDriveShare
+      tags: [drive]
+      summary: Create a share link
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '201':
+          description: Token and public path. Password is not returned.
+        '402':
+          $ref: '#/components/responses/Error'
+  /api/v1/public/drive/{token}:
+    get:
+      operationId: readPublicDriveShare
+      tags: [drive]
+      summary: Read a public share link
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: password
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File metadata, or locked when a password is required.
+  /api/v1/docs:
+    get:
+      operationId: listDocs
+      tags: [docs]
+      summary: List documents and the WOPI stub
+      responses:
+        '200':
+          description: Documents, templates, and adapter note.
+        '402':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createDoc
+      tags: [docs]
+      summary: Create a document stub
+      responses:
+        '201':
+          description: Document.
+  /api/v1/docs/{id}/wopi:
+    get:
+      operationId: wopiCheck
+      tags: [docs]
+      summary: WOPI CheckFileInfo stub
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: CheckFileInfo fields plus adapter wopi-stub.
+    post:
+      operationId: wopiSave
+      tags: [docs]
+      summary: WOPI save stub
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: New version and size.
+  /api/v1/meet/rooms:
+    get:
+      operationId: listMeetings
+      tags: [meet]
+      summary: List meeting rooms
+      responses:
+        '200':
+          description: Rooms with LiveKit stub fields.
+    post:
+      operationId: createMeeting
+      tags: [meet]
+      summary: Create a meeting shell
+      responses:
+        '201':
+          description: Room, participant cap, and stub token.
+  /api/v1/booking/pages:
+    get:
+      operationId: listBookingPages
+      tags: [booking]
+      summary: List booking pages
+      responses:
+        '200':
+          description: Pages owned by the tenant.
+    post:
+      operationId: createBookingPage
+      tags: [booking]
+      summary: Create a booking page
+      responses:
+        '201':
+          description: Page.
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/public/booking/{slug}:
+    get:
+      operationId: readPublicBooking
+      tags: [booking]
+      summary: Public booking page and open slots
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Title, timezone, and slots.
+    post:
+      operationId: bookPublicSlot
+      tags: [booking]
+      summary: Reserve a slot
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Reservation and stub Meet link.
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List tasks
+      responses:
+        '200':
+          description: Tasks.
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a task
+      responses:
+        '201':
+          description: Task.
+  /api/v1/tasks/{id}:
+    patch:
+      operationId: patchTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Task.
+  /api/v1/notes:
+    get:
+      operationId: listNotes
+      tags: [tasks]
+      summary: List notes
+      responses:
+        '200':
+          description: Notes.
+    post:
+      operationId: createNote
+      tags: [tasks]
+      summary: Create a note
+      responses:
+        '201':
+          description: Note.
+  /api/v1/notes/{id}:
+    patch:
+      operationId: patchNote
+      tags: [tasks]
+      summary: Update a note
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Note.
+  /api/v1/ai/status:
+    get:
+      operationId: aiStatus
+      tags: [ai]
+      summary: AI entitlement, switch, and today's usage
+      responses:
+        '200':
+          description: Status.
+  /api/v1/admin/ai:
+    put:
+      operationId: setAiEnabled
+      tags: [ai]
+      summary: Turn AI on or off for the tenant
+      responses:
+        '200':
+          description: Status.
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/ai/write:
+    post:
+      operationId: aiWrite
+      tags: [ai]
+      summary: Writing stub
+      responses:
+        '200':
+          description: Draft text and remaining actions.
+        '429':
+          $ref: '#/components/responses/Error'
+  /api/v1/ai/summarize:
+    post:
+      operationId: aiSummarize
+      tags: [ai]
+      summary: Summary stub
+      responses:
+        '200':
+          description: Summary and remaining actions.
+        '429':
+          $ref: '#/components/responses/Error'
+  /api/v1/compliance:
+    get:
+      operationId: getCompliance
+      tags: [compliance]
+      summary: Archive, retention, discovery, holds, and journals
+      responses:
+        '200':
+          description: Compliance hooks.
+        '402':
+          $ref: '#/components/responses/Error'
+  /api/v1/compliance/archive:
+    put:
+      operationId: setArchive
+      tags: [compliance]
+      summary: Toggle the archive hook
+      responses:
+        '200':
+          description: Archive flag.
+  /api/v1/compliance/retention:
+    put:
+      operationId: setRetention
+      tags: [compliance]
+      summary: Set retention days
+      responses:
+        '200':
+          description: Retention.
+  /api/v1/compliance/ediscovery:
+    post:
+      operationId: createDiscovery
+      tags: [compliance]
+      summary: Save an eDiscovery query stub
+      responses:
+        '201':
+          description: Case with status stub.
+  /api/v1/compliance/holds:
+    post:
+      operationId: createHold
+      tags: [compliance]
+      summary: Place a legal hold stub
+      responses:
+        '201':
+          description: Hold.
+  /api/v1/compliance/journaling:
+    post:
+      operationId: createJournal
+      tags: [compliance]
+      summary: Add a journaling destination
+      responses:
+        '201':
+          description: Journal rule.
+  /api/v1/admin/sso:
+    get:
+      operationId: getSso
+      tags: [sso]
+      summary: Read SSO config without secrets
+      responses:
+        '200':
+          description: Protocol and issuer, or configured false.
+    put:
+      operationId: putSso
+      tags: [sso]
+      summary: Store encrypted SAML or OIDC metadata
+      responses:
+        '200':
+          description: Redacted config.
+  /api/v1/admin/scim/tokens:
+    get:
+      operationId: listScimTokens
+      tags: [sso]
+      summary: List SCIM tokens without secrets
+      responses:
+        '200':
+          description: Token ids and labels.
+    post:
+      operationId: createScimToken
+      tags: [sso]
+      summary: Create a SCIM token
+      responses:
+        '201':
+          description: Token plaintext, returned once.
+  /api/v1/scim/v2/ServiceProviderConfig:
+    get:
+      operationId: scimProvider
+      tags: [sso]
+      summary: SCIM service provider skeleton
+      security: []
+      responses:
+        '200':
+          description: Provider config.
+  /api/v1/scim/v2/Users:
+    get:
+      operationId: scimListUsers
+      tags: [sso]
+      summary: List SCIM users
+      responses:
+        '200':
+          description: ListResponse.
+    post:
+      operationId: scimCreateUser
+      tags: [sso]
+      summary: Create a SCIM user skeleton
+      responses:
+        '201':
+          description: User. Not a mailbox.
+  /api/v1/calendar/events:
+    get:
+      operationId: listEvents
+      tags: [mail]
+      summary: List calendar events in the web shape
+      responses:
+        '200':
+          description: Events wrapped for the web client.
+    post:
+      operationId: createEvent
+      tags: [mail]
+      summary: Create a calendar event
+      responses:
+        '201':
+          description: Event.
+  /api/v1/contacts:
+    get:
+      operationId: listContacts
+      tags: [mail]
+      summary: Directory plus personal contacts
+      responses:
+        '200':
+          description: Directory and personal contacts.
+    post:
+      operationId: createContact
+      tags: [mail]
+      summary: Create a personal contact
+      responses:
+        '201':
+          description: Contact.
 components:
   securitySchemes:
     bearerAuth:

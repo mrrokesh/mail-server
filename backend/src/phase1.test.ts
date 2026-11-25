@@ -263,7 +263,28 @@ test('totp is required after confirmation', async () => {
     url: '/api/v1/auth/login',
     payload: { email: account.email, password: 'correct-horse' },
   });
-  assert.equal((missing.json() as { code: string }).code, 'API-SEC-001');
+  assert.equal(missing.statusCode, 200, missing.body);
+  const challenge = missing.json() as {
+    mfaRequired?: boolean;
+    challengeToken?: string;
+    accessToken?: string;
+  };
+  assert.equal(challenge.mfaRequired, true);
+  assert.equal(typeof challenge.challengeToken, 'string');
+  assert.equal(challenge.accessToken, undefined);
+  const rejected = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/mfa/verify',
+    payload: { challengeToken: challenge.challengeToken, code: '000000' },
+  });
+  assert.equal((rejected.json() as { code: string }).code, 'API-SEC-002');
+  const verified = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/mfa/verify',
+    payload: { challengeToken: challenge.challengeToken, totpCode: totpCode(secret, new Date()) },
+  });
+  assert.equal(verified.statusCode, 200, verified.body);
+  assert.equal(typeof (verified.json() as { accessToken?: string }).accessToken, 'string');
   const signedIn = await app.inject({
     method: 'POST',
     url: '/api/v1/auth/login',

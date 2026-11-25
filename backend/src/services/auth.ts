@@ -3,7 +3,7 @@ import type { PlanTier } from '@mrrokesh/shared';
 import { PLAN_CATALOG, TRIAL_DAYS, TRIAL_SEATS } from '../billing/entitlements';
 import type { AppConfig } from '../config';
 import { encryptString, decryptString } from '../crypto/aes';
-import { signAccess } from '../crypto/jwt';
+import { signAccess, verifyAccess } from '../crypto/jwt';
 import {
   hashOpaqueToken,
   hashPassword,
@@ -26,6 +26,10 @@ export interface SessionBody {
   user: ReturnType<typeof presentUser>;
   organization: ReturnType<typeof presentOrg>;
 }
+
+export type LoginResult = SessionBody | { mfaRequired: true; challengeToken: string };
+
+const MFA_CHALLENGE_SEC = 5 * 60;
 
 export interface AuthMeta {
   requestId: string;
@@ -248,7 +252,7 @@ export async function loginAccount(
     platform?: AuthMeta['platform'];
   },
   meta: AuthMeta,
-): Promise<SessionBody> {
+): Promise<LoginResult> {
   const user = await deps.store.findUserByEmail(input.email);
   const pepper = user ? pepperFor(deps.config, user.pepperVersion) : deps.config.passwordPepper;
   const hash = user?.passwordHash ?? (await dummyHash(deps.config));
@@ -273,7 +277,23 @@ export async function loginAccount(
   if (!org) throw new ApiError('API-AUTH-001');
   if (org.status === 'suspended') throw new ApiError('API-TEN-001');
   if (user.mfaEnabled) {
-    if (!input.totpCode) throw new ApiError('API-SEC-001', { reason: 'totp_required' });
+    if (!input.totpCode) {
+      return {
+        mfaRequired: true,
+        challengeToken: signAccess(
+          {
+            sub: user.id,
+            org: user.organizationId,
+            role: user.role,
+            email: user.email,
+            scope: 'mfa_challenge',
+          },
+          deps.config.jwtSecret,
+          MFA_CHALLENGE_SEC,
+          deps.now(),
+        ),
+      };
+    }
     if (!user.totpSecretEnc || !user.totpSecretIv) throw new ApiError('API-SEC-002');
     const secret = decryptString(
       deps.config.dataEncryptionKey,
@@ -327,6 +347,52 @@ export async function loginAccount(
     targetId: user.id,
     ipAddress: meta.ip,
     metadata: { mfa: user.mfaEnabled },
+  });
+  return issueSession(deps, fresh, org, {
+    ...meta,
+    deviceLabel: input.deviceLabel,
+    platform: input.platform,
+  });
+}
+
+export async function verifyMfaChallenge(
+  deps: AppDeps,
+  input: {
+    challengeToken: string;
+    code: string;
+    deviceLabel?: string;
+    platform?: AuthMeta['platform'];
+  },
+  meta: AuthMeta,
+): Promise<SessionBody> {
+  const claims = verifyAccess(input.challengeToken, deps.config.jwtSecret, deps.now());
+  if (claims.scope !== 'mfa_challenge') throw new ApiError('API-AUTH-002', { reason: 'invalid' });
+  const user = await deps.store.findUser(claims.org, claims.sub);
+  if (!user || !user.isActive || user.deletedAt || !user.mfaEnabled)
+    throw new ApiError('API-SEC-002');
+  if (!user.totpSecretEnc || !user.totpSecretIv) throw new ApiError('API-SEC-002');
+  const secret = decryptString(
+    deps.config.dataEncryptionKey,
+    user.totpSecretEnc,
+    user.totpSecretIv,
+  );
+  if (!verifyTotp(secret, input.code, deps.now())) throw new ApiError('API-SEC-002');
+  const org = await deps.store.findOrg(user.organizationId);
+  if (!org) throw new ApiError('API-SEC-002');
+  if (org.status === 'suspended') throw new ApiError('API-TEN-001');
+  await deps.store.updateUser(user.organizationId, user.id, { lastLoginAt: deps.now() });
+  const fresh = await deps.store.findUser(user.organizationId, user.id);
+  if (!fresh) throw new ApiError('API-SRV-500');
+  await writeAudit(deps.store, {
+    at: deps.now(),
+    organizationId: user.organizationId,
+    actorUserId: user.id,
+    requestId: meta.requestId,
+    action: 'auth.login',
+    targetType: 'user',
+    targetId: user.id,
+    ipAddress: meta.ip,
+    metadata: { mfa: true, via: 'verify' },
   });
   return issueSession(deps, fresh, org, {
     ...meta,

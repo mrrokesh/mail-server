@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { PLAN_TIERS } from '@mrrokesh/shared';
 import { clearRefreshCookie, readCookie, refreshCookie } from '../http/cookies';
 import { ApiError } from '../errors';
-import { ORG_ROLES } from '../store/types';
+import type { OrgRole } from '../store/types';
 import {
   AUDIT_ROLES,
   BILLING_ROLES,
@@ -29,6 +29,7 @@ import {
   forgotPassword,
   loginAccount,
   logoutSession,
+  verifyMfaChallenge,
   passkeyOptions,
   refreshSession,
   registerPasskey,
@@ -46,9 +47,9 @@ import {
 import {
   createDomain,
   dnsRecordsFor,
-  presentDomain,
   setCatchAll,
   verifyDomain,
+  webDomain,
 } from '../services/domains';
 import { flattenSignup, withClientUser } from '../services/client-session';
 import {
@@ -56,6 +57,7 @@ import {
   listClientMessages,
   openSession,
   presentSentMessage,
+  assertProtocol,
   protocolAccess,
   readClientMessage,
   submitMessage,
@@ -93,6 +95,32 @@ const slugSchema = z
     'Use lowercase letters, numbers, and hyphens.',
   );
 const platformSchema = z.enum(['web', 'android', 'ios']);
+
+const ROLE_ALIASES: Record<string, OrgRole> = {
+  owner: 'owner',
+  billing_admin: 'billing_admin',
+  user_admin: 'user_admin',
+  helpdesk: 'helpdesk',
+  security_admin: 'security_admin',
+  compliance_admin: 'compliance_admin',
+  read_only: 'read_only',
+  member: 'member',
+  user: 'member',
+};
+
+function roleFromLabel(value: string) {
+  const key = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  const role = ROLE_ALIASES[key];
+  if (!role) {
+    throw new ApiError('API-VAL-001', {
+      fields: [{ path: 'role', message: 'Choose a role.' }],
+    });
+  }
+  return role;
+}
 
 function meta(
   request: { id: string; ip: string },
@@ -218,6 +246,7 @@ export function registerApi(app: FastifyInstance): void {
       body,
       meta(request, { deviceLabel: body.deviceLabel, platform: body.platform }),
     );
+    if ('mfaRequired' in session) return session;
     setSessionCookie(app, reply, session.refreshToken);
     return withClientUser(app.deps, session);
   };
@@ -301,6 +330,50 @@ export function registerApi(app: FastifyInstance): void {
     const params = parseBody(z.object({ id: z.string().uuid() }), request.params);
     await app.deps.store.revokeRefresh(tenant.org.id, params.id, app.deps.now());
     return reply.code(204).send();
+  });
+
+  app.post('/api/v1/auth/mfa/verify', async (request, reply) => {
+    const body = parseBody(
+      z
+        .object({
+          challengeToken: z.string().min(20),
+          code: z
+            .string()
+            .regex(/^\d{6}$/)
+            .optional(),
+          totpCode: z
+            .string()
+            .regex(/^\d{6}$/)
+            .optional(),
+          deviceLabel: z.string().trim().max(80).optional(),
+          platform: platformSchema.optional(),
+        })
+        .refine((value) => Boolean(value.code || value.totpCode), {
+          message: 'Enter the 6-digit code.',
+          path: ['code'],
+        }),
+      request.body,
+    );
+    enforceRate(
+      app.deps.rates,
+      `mfa:${clientIp(request) ?? 'local'}`,
+      app.deps.config.rateLimits.login,
+      app.deps.now(),
+      reply,
+    );
+    const code = body.code ?? body.totpCode ?? '';
+    const session = await verifyMfaChallenge(
+      app.deps,
+      {
+        challengeToken: body.challengeToken,
+        code,
+        deviceLabel: body.deviceLabel,
+        platform: body.platform,
+      },
+      meta(request, { deviceLabel: body.deviceLabel, platform: body.platform }),
+    );
+    setSessionCookie(app, reply, session.refreshToken);
+    return withClientUser(app.deps, session);
   });
 
   app.post('/api/v1/auth/mfa/totp/setup', async (request) => {
@@ -421,21 +494,35 @@ export function registerApi(app: FastifyInstance): void {
   app.post('/api/v1/users', async (request, reply) => {
     const tenant = await loadTenant(request, 'session');
     const body = parseBody(
-      z.object({
-        email: emailSchema,
-        fullName: z.string().trim().min(1).max(80),
-        password: passwordSchema,
-        role: z.enum(ORG_ROLES).default('member'),
-      }),
+      z
+        .object({
+          email: emailSchema,
+          fullName: z.string().trim().min(1).max(80).optional(),
+          name: z.string().trim().min(1).max(80).optional(),
+          password: passwordSchema.optional(),
+          role: z.string().trim().min(1).max(40).optional(),
+        })
+        .refine((value) => Boolean(value.fullName || value.name), {
+          message: 'Enter a name.',
+          path: ['fullName'],
+        }),
       request.body,
     );
+    const fullName = body.fullName ?? body.name ?? '';
+    const password = body.password ?? `invite-${crypto.randomBytes(12).toString('base64url')}`;
     const created = await createUserAccount(
       app.deps,
       tenant,
-      { ...body, role: body.role ?? 'member' },
+      { email: body.email, fullName, password, role: roleFromLabel(body.role ?? 'member') },
       meta(request),
     );
-    return reply.code(201).send(created);
+    return reply
+      .code(201)
+      .send(
+        body.password
+          ? created
+          : { ...created, temporaryPassword: password, status: 'invited' as const },
+      );
   });
 
   app.post('/api/v1/users/:id/suspend', async (request) => {
@@ -479,24 +566,30 @@ export function registerApi(app: FastifyInstance): void {
     const tenant = await loadTenant(request, 'session');
     assertRole(tenant.user.role, [...DOMAIN_ROLES, 'read_only', 'billing_admin']);
     const rows = await app.deps.store.listDomains(tenant.org.id);
-    return rows.map(presentDomain);
+    return Promise.all(rows.map((row) => webDomain(app.deps, row)));
   });
 
   app.post('/api/v1/domains', async (request, reply) => {
     const tenant = await loadTenant(request, 'session');
     assertRole(tenant.user.role, DOMAIN_ROLES);
     const body = parseBody(
-      z.object({
-        domainName: z
-          .string()
-          .trim()
-          .toLowerCase()
-          .transform((value) => value.normalize('NFKC')),
-      }),
+      z
+        .object({
+          domainName: z.string().trim().optional(),
+          name: z.string().trim().optional(),
+        })
+        .refine((value) => Boolean(value.domainName || value.name), {
+          message: 'Enter a domain like example.com.',
+          path: ['domainName'],
+        }),
       request.body,
     );
-    const created = await createDomain(app.deps, tenant, body.domainName, meta(request));
-    return reply.code(201).send(created);
+    const domainName = (body.domainName ?? body.name ?? '').normalize('NFKC').toLowerCase();
+    const created = await createDomain(app.deps, tenant, domainName, meta(request));
+    const stored = await app.deps.store.findDomain(tenant.org.id, created.domain.id);
+    if (!stored) throw new ApiError('API-SRV-500');
+    const view = await webDomain(app.deps, stored);
+    return reply.code(201).send({ ...view, domain: created.domain, records: created.records });
   });
 
   app.get('/api/v1/domains/:id', async (request) => {
@@ -504,7 +597,7 @@ export function registerApi(app: FastifyInstance): void {
     const params = parseBody(z.object({ id: z.string().uuid() }), request.params);
     const domain = await app.deps.store.findDomain(tenant.org.id, params.id);
     if (!domain) throw new ApiError('API-RES-404');
-    return presentDomain(domain);
+    return webDomain(app.deps, domain);
   });
 
   app.get('/api/v1/domains/:id/dns', async (request) => {
@@ -704,14 +797,11 @@ export function registerApi(app: FastifyInstance): void {
   app.get('/api/v1/mail/protocols', async (request) => {
     const tenant = await loadTenant(request, 'session');
     const query = parseBody(
-      z.object({ protocol: z.enum(['imap', 'smtp', 'pop3']).optional() }),
+      z.object({ protocol: z.enum(['imap', 'smtp', 'pop3', 'activesync', 'ews']).optional() }),
       request.query,
     );
-    const access = protocolAccess(tenant);
-    if (query.protocol && !tenant.limits.imap) {
-      throw new ApiError('API-BILL-003', { feature: query.protocol, requiredTier: 'starter' });
-    }
-    return access;
+    assertProtocol(tenant, query.protocol);
+    return protocolAccess(tenant);
   });
 
   app.post('/api/v1/mail/session', async (request) => {

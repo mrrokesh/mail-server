@@ -3,6 +3,7 @@ import type { DnsLookup } from './dns/lookup';
 import type { MemoryRateLimiter } from './http/rate-limit';
 import type { MailPlane } from './mail/plane';
 import type { ControlStore } from './store/types';
+import type { WorkspaceStore } from './v1/workspace';
 
 export interface WebAuthnChallenge {
   challenge: string;
@@ -15,6 +16,7 @@ export interface WebAuthnChallenge {
 export interface AppDeps {
   config: AppConfig;
   store: ControlStore;
+  workspace: WorkspaceStore;
   mail: MailPlane;
   dns: DnsLookup;
   challenges: Map<string, WebAuthnChallenge>;

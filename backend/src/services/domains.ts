@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import type { ErrorCode } from '@mrrokesh/shared';
 import { withinCap } from '../billing/entitlements';
 import { encryptString } from '../crypto/aes';
 import { generateDkimKey } from '../crypto/dkim';
@@ -10,6 +11,52 @@ import { assertEntitled, assertWritable, writeAudit, type TenantContext } from '
 import type { AuthMeta } from './auth';
 
 const DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+const WEB_CHECKS: { id: string; label: string; code: ErrorCode }[] = [
+  { id: 'ownership', label: 'Ownership', code: 'API-DNS-001' },
+  { id: 'mx', label: 'MX', code: 'API-DNS-002' },
+  { id: 'spf', label: 'SPF', code: 'API-DNS-003' },
+  { id: 'dkim', label: 'DKIM', code: 'API-DNS-004' },
+  { id: 'dmarc', label: 'DMARC', code: 'API-DNS-005' },
+  { id: 'mta-sts', label: 'MTA-STS', code: 'API-DNS-006' },
+];
+
+function checkFlag(domain: DomainRecord, id: string): boolean {
+  if (id === 'ownership') return domain.isVerified;
+  if (id === 'mx') return domain.mxVerified;
+  if (id === 'spf') return domain.spfVerified;
+  if (id === 'dkim') return domain.dkimVerified;
+  if (id === 'dmarc') return domain.dmarcVerified;
+  if (id === 'mta-sts') return domain.mtaStsEnabled;
+  return false;
+}
+
+export async function webDomain(deps: AppDeps, domain: DomainRecord) {
+  const key = await activeDkim(deps, domain.organizationId, domain.id);
+  const records = key ? suggestedDnsRecords(domain, key, deps.config) : [];
+  const checks = WEB_CHECKS.map((item) => {
+    const record = records.find((row) => row.purpose === item.id);
+    const ready = domain.lastDnsCheckedAt !== null && checkFlag(domain, item.id);
+    const status = ready
+      ? 'ready'
+      : domain.lastDnsCheckedAt
+        ? 'fail'
+        : item.id === 'ownership'
+          ? 'fail'
+          : 'waiting';
+    return {
+      id: item.id,
+      label: item.label,
+      type: record?.type ?? 'TXT',
+      host: record?.host ?? domain.domainName,
+      value: record?.value ?? '',
+      status,
+      code: ready ? null : item.code,
+      ok: ready,
+    };
+  });
+  return { ...presentDomain(domain), name: domain.domainName, checks };
+}
 
 export function presentDomain(domain: DomainRecord) {
   return {
@@ -118,18 +165,12 @@ export async function dnsRecordsFor(
   return suggestedDnsRecords(domain, key, deps.config);
 }
 
-export interface DnsCheck {
-  id: string;
-  ok: boolean;
-  code?: string;
-}
-
 export async function verifyDomain(
   deps: AppDeps,
   tenant: TenantContext,
   domainId: string,
   meta: AuthMeta,
-): Promise<{ domain: ReturnType<typeof presentDomain>; checks: DnsCheck[] }> {
+) {
   const domain = await deps.store.findDomain(tenant.org.id, domainId);
   if (!domain) throw new ApiError('API-RES-404');
   const key = await activeDkim(deps, tenant.org.id, domain.id);
@@ -163,14 +204,6 @@ export async function verifyDomain(
   const mtaOk = (await deps.dns.resolveCname(`_mta-sts.${name}`)).some(
     (value) => value.replace(/\.$/, '').toLowerCase() === 'mta-sts.mrrokesh.mail',
   );
-  const checks: DnsCheck[] = [
-    { id: 'ownership', ok: true },
-    { id: 'mx', ok: mxOk, ...(mxOk ? {} : { code: 'API-DNS-002' }) },
-    { id: 'spf', ok: spfOk, ...(spfOk ? {} : { code: 'API-DNS-003' }) },
-    { id: 'dkim', ok: dkimOk, ...(dkimOk ? {} : { code: 'API-DNS-004' }) },
-    { id: 'dmarc', ok: dmarcOk, ...(dmarcOk ? {} : { code: 'API-DNS-005' }) },
-    { id: 'mta-sts', ok: mtaOk, ...(mtaOk ? {} : { code: 'API-DNS-006' }) },
-  ];
   const score = [true, mxOk, spfOk, dkimOk, dmarcOk].filter(Boolean).length * 20;
   const updated = await deps.store.updateDomain(tenant.org.id, domain.id, {
     isVerified: true,
@@ -194,7 +227,8 @@ export async function verifyDomain(
     ipAddress: meta.ip,
     metadata: { score },
   });
-  return { domain: presentDomain(updated), checks };
+  const view = await webDomain(deps, updated);
+  return { domain: presentDomain(updated), checks: view.checks };
 }
 
 export async function setCatchAll(

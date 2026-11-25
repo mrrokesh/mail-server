@@ -9,8 +9,10 @@ import { MemoryRateLimiter } from './http/rate-limit';
 import type { MailPlane } from './mail/plane';
 import { MockMailPlane } from './mail/mock-plane';
 import { registerApi } from './routes/register';
+import { registerV1 } from './routes/v1-modules';
 import type { ControlStore } from './store/types';
 import { MemoryStore } from './store/memory';
+import { WorkspaceStore } from './v1/workspace';
 import type { AppDeps } from './app-deps';
 
 export interface BuildOptions {
@@ -27,6 +29,7 @@ export function buildServer(options?: BuildOptions) {
   const deps: AppDeps = {
     config,
     store: options?.store ?? new MemoryStore(),
+    workspace: new WorkspaceStore(),
     mail: options?.mail ?? new MockMailPlane(),
     dns: options?.dns ?? new LiveDns(),
     challenges: new Map(),
@@ -80,6 +83,7 @@ export function buildServer(options?: BuildOptions) {
   }));
 
   registerApi(app);
+  registerV1(app);
 
   app.setNotFoundHandler((request, reply) => {
     const error = ERROR_CODES['API-RES-404'];

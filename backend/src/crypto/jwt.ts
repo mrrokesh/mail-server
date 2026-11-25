@@ -7,7 +7,7 @@ export interface AccessClaims {
   org: string;
   role: OrgRole;
   email: string;
-  scope: 'session' | 'mfa_enroll';
+  scope: 'session' | 'mfa_enroll' | 'mfa_challenge';
 }
 
 interface JwtPayload extends AccessClaims {

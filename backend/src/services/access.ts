@@ -92,6 +92,7 @@ export const AUDIT_ROLES = [
   'compliance_admin',
   'read_only',
 ] as const satisfies readonly OrgRole[];
+export const COMPLIANCE_ROLES = ['owner', 'compliance_admin'] as const satisfies readonly OrgRole[];
 
 export function assertEntitled(limits: PlanLimits, feature: FeatureFlag): void {
   const allowed =
@@ -158,6 +159,9 @@ export async function loadTenant(
   if (mode === 'session' && claims.scope !== 'session') {
     throw new ApiError('API-SEC-001', { reason: 'enrollment_required' });
   }
+  if (claims.scope === 'mfa_challenge' && mode !== 'session') {
+    throw new ApiError('API-AUTH-002', { reason: 'invalid' });
+  }
   const user = await request.server.deps.store.findUser(claims.org, claims.sub);
   if (!user || !user.isActive || user.deletedAt) throw new ApiError('API-AUTH-001');
   const org = await request.server.deps.store.findOrg(claims.org);
@@ -206,7 +210,9 @@ export function presentUser(user: UserRecord) {
     organizationId: user.organizationId,
     email: user.email,
     fullName: user.fullName,
+    name: user.fullName,
     role: user.role,
+    status: user.isActive ? ('active' as const) : ('suspended' as const),
     mfaEnabled: user.mfaEnabled,
     isActive: user.isActive,
     deletedAt: user.deletedAt ? user.deletedAt.toISOString() : null,

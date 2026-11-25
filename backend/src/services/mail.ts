@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { ipPool, utcDay, utcMinute } from '../billing/entitlements';
+import { tierAtLeast } from '../v1/gates';
 import { ApiError } from '../errors';
 import type { AppDeps } from '../app-deps';
 import type { StoredMessage } from '../mail/plane';
@@ -320,13 +321,31 @@ export async function openSession(deps: AppDeps, tenant: TenantContext) {
 }
 
 export function protocolAccess(tenant: TenantContext) {
+  const exchange = tierAtLeast(tenant.plan.tier, 'business');
   return {
     jmap: true,
     imap: tenant.limits.imap,
     smtp: tenant.limits.imap,
     pop3: tenant.limits.imap,
+    activesync: exchange,
+    ews: exchange,
+    activesyncNote:
+      'ActiveSync and EWS are served by unmodified Stalwart. This API only records whether the plan includes them.',
     ipPool: ipPool(tenant.plan.tier, tenant.subscription.paidAt),
   };
+}
+
+export function assertProtocol(tenant: TenantContext, protocol?: string): void {
+  if (!protocol) return;
+  if (protocol === 'activesync' || protocol === 'ews') {
+    if (!tierAtLeast(tenant.plan.tier, 'business')) {
+      throw new ApiError('API-BILL-003', { feature: protocol, requiredTier: 'business' });
+    }
+    return;
+  }
+  if (!tenant.limits.imap) {
+    throw new ApiError('API-BILL-003', { feature: protocol, requiredTier: 'starter' });
+  }
 }
 
 interface JmapCall {
