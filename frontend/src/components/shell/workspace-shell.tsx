@@ -40,6 +40,45 @@ export function WorkspaceShell() {
           >
             Contacts
           </NavLink>
+          <NavLink
+            to="/drive"
+            className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
+          >
+            Drive
+          </NavLink>
+          <NavLink
+            to="/documents"
+            className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
+          >
+            Docs
+          </NavLink>
+          <NavLink
+            to="/meet"
+            className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
+          >
+            Meet
+          </NavLink>
+          <NavLink
+            to="/booking"
+            className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
+          >
+            Booking
+          </NavLink>
+          <NavLink
+            to="/tasks"
+            className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
+          >
+            Tasks
+          </NavLink>
+          <NavLink
+            to="/notes"
+            className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
+          >
+            Notes
+          </NavLink>
+          <NavLink to="/ai" className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}>
+            AI
+          </NavLink>
           <NavLink to="/admin/domains" className={() => `nav-link${admin ? ' is-active' : ''}`}>
             Admin
           </NavLink>
@@ -70,6 +109,8 @@ export function WorkspaceShell() {
           <nav className="subnav" aria-label="Admin">
             <NavLink to="/admin/domains">Domains</NavLink>
             <NavLink to="/admin/users">Users</NavLink>
+            <NavLink to="/admin/compliance">Compliance</NavLink>
+            <NavLink to="/admin/sso">SSO</NavLink>
           </nav>
         ) : null}
         <main id="content" className="operate">

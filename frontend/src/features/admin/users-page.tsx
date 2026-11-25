@@ -5,15 +5,41 @@ import { ErrorNote, Field, SelectField } from '../../components/ui/field';
 import { Sheet } from '../../components/ui/sheet';
 import { SkeletonLines } from '../../components/ui/skeleton';
 import { ApiProblem, readOrFallback, writeOrFallback } from '../../lib/api';
-import { MOCK_USERS, USER_ROLES } from '../../lib/mock-data';
+import { MOCK_USERS } from '../../lib/mock-data';
 import { parseUser, parseUsers, type OrgUser } from '../../lib/schemas';
 import { useDocumentTitle } from '../../lib/use-document-title';
 import type { ErrorCode } from '@mrrokesh/shared';
 
+const INVITE_ROLES = [
+  { value: 'billing_admin', label: 'Billing admin' },
+  { value: 'user_admin', label: 'User admin' },
+  { value: 'helpdesk', label: 'Helpdesk' },
+  { value: 'security_admin', label: 'Security admin' },
+  { value: 'member', label: 'User' },
+] as const;
+
+const ROLE_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'owner', label: 'Owner' },
+  ...INVITE_ROLES,
+];
+
+function canonicalRole(role: string): string {
+  const key = role
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, '_');
+  return key === 'user' ? 'member' : key;
+}
+
+function roleLabel(role: string): string {
+  return ROLE_FILTERS.find((item) => item.value === canonicalRole(role))?.label ?? role;
+}
+
 const inviteSchema = z.object({
   name: z.string().trim().min(2).max(80),
   email: z.string().trim().email(),
-  role: z.enum(USER_ROLES),
+  role: z.enum(['billing_admin', 'user_admin', 'helpdesk', 'security_admin', 'member']),
 });
 
 export function UsersPage() {
@@ -24,22 +50,22 @@ export function UsersPage() {
     queryFn: () => readOrFallback('/users', parseUsers, MOCK_USERS),
     staleTime: 5 * 60 * 1000,
   });
-  const [role, setRole] = useState<string>('All');
+  const [role, setRole] = useState<string>('all');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pane, setPane] = useState<'folders' | 'list' | 'read'>('list');
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState<(typeof USER_ROLES)[number]>('User');
+  const [inviteRole, setInviteRole] = useState<(typeof INVITE_ROLES)[number]['value']>('member');
+  const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
   const [code, setCode] = useState<ErrorCode | null>(null);
   const [pending, setPending] = useState(false);
 
-  const roles = ['All', ...USER_ROLES];
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return (users.data ?? []).filter((person) => {
-      if (role !== 'All' && person.role !== role) return false;
+      if (role !== 'all' && canonicalRole(person.role) !== role) return false;
       if (!needle) return true;
       return [person.name, person.email, person.role].some((value) =>
         value.toLowerCase().includes(needle),
@@ -57,7 +83,7 @@ export function UsersPage() {
     }
     setPending(true);
     setCode(null);
-    const local: OrgUser = {
+    const local: OrgUser & { temporaryPassword?: string } = {
       id: `usr_${crypto.randomUUID()}`,
       name: parsed.data.name,
       email: parsed.data.email,
@@ -67,12 +93,29 @@ export function UsersPage() {
     try {
       const result = await writeOrFallback(
         '/users',
-        { method: 'POST', body: JSON.stringify(parsed.data) },
-        parseUser,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            name: parsed.data.name,
+            fullName: parsed.data.name,
+            email: parsed.data.email,
+            role: parsed.data.role,
+          }),
+        },
+        (input): (OrgUser & { temporaryPassword?: string }) | null => {
+          const user = parseUser(input);
+          if (!user || !input || typeof input !== 'object') return null;
+          const password = (input as { temporaryPassword?: unknown }).temporaryPassword;
+          return {
+            ...user,
+            temporaryPassword: typeof password === 'string' ? password : undefined,
+          };
+        },
         () => local,
       );
       queryClient.setQueryData<OrgUser[]>(['users'], (current = []) => [...current, result.data]);
       setSelectedId(result.data.id);
+      setTemporaryPassword(result.data.temporaryPassword ?? null);
       setOpen(false);
       setName('');
       setEmail('');
@@ -88,18 +131,18 @@ export function UsersPage() {
     <div className="panes" data-pane={pane}>
       <h1 className="visually-hidden">Users</h1>
       <section className="pane pane-nav" aria-label="Roles">
-        {roles.map((item) => (
+        {ROLE_FILTERS.map((item) => (
           <button
-            key={item}
+            key={item.value}
             type="button"
             className="folder"
-            aria-current={role === item ? 'page' : undefined}
+            aria-current={role === item.value ? 'page' : undefined}
             onClick={() => {
-              setRole(item);
+              setRole(item.value);
               setPane('list');
             }}
           >
-            {item}
+            {item.label}
           </button>
         ))}
       </section>
@@ -153,8 +196,11 @@ export function UsersPage() {
             <h2 className="h3">{selected.name}</h2>
             <p className="break">{selected.email}</p>
             <p className="caption muted">
-              {selected.role} · {selected.status}
+              {roleLabel(selected.role)} · {selected.status}
             </p>
+            {temporaryPassword && selected.id === selectedId ? (
+              <p className="break">Temporary password: {temporaryPassword}</p>
+            ) : null}
           </div>
         ) : (
           <p className="read muted">Select a person.</p>
@@ -173,13 +219,13 @@ export function UsersPage() {
             label="Role"
             value={inviteRole}
             onChange={(event) => {
-              const next = USER_ROLES.find((item) => item === event.target.value);
-              if (next) setInviteRole(next);
+              const next = INVITE_ROLES.find((item) => item.value === event.target.value);
+              if (next) setInviteRole(next.value);
             }}
           >
-            {USER_ROLES.map((item) => (
-              <option key={item} value={item}>
-                {item}
+            {INVITE_ROLES.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
               </option>
             ))}
           </SelectField>

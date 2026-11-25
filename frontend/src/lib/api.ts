@@ -35,7 +35,16 @@ export function resetApiCache() {
 }
 
 function clientFault(status: number): boolean {
-  return status === 401 || status === 403 || status === 409 || status === 422 || status === 429;
+  return (
+    status === 401 ||
+    status === 402 ||
+    status === 403 ||
+    status === 409 ||
+    status === 413 ||
+    status === 422 ||
+    status === 429 ||
+    status === 507
+  );
 }
 
 async function probe(): Promise<'up' | 'down'> {

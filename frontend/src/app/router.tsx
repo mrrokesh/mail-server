@@ -3,9 +3,18 @@ import { AuthShell } from '../components/shell/auth-shell';
 import { MarketingShell } from '../components/shell/marketing-shell';
 import { RequireSession } from '../components/shell/require-session';
 import { WorkspaceShell } from '../components/shell/workspace-shell';
+import { CompliancePage } from '../features/admin/compliance-page';
 import { DnsWizardPage } from '../features/admin/dns-wizard-page';
 import { DomainsPage } from '../features/admin/domains-page';
+import { SsoPage } from '../features/admin/sso-page';
 import { UsersPage } from '../features/admin/users-page';
+import { AiPage } from '../features/ai/ai-page';
+import { BookingPage } from '../features/booking/booking-page';
+import { PublicBookingPage } from '../features/booking/public-booking-page';
+import { DocumentsPage } from '../features/docs/documents-page';
+import { DrivePage } from '../features/drive/drive-page';
+import { MeetPage } from '../features/meet/meet-page';
+import { NotesPage, TasksPage } from '../features/tasks/tasks-page';
 import { ForgotPage } from '../features/auth/forgot-page';
 import { LoginPage } from '../features/auth/login-page';
 import { SignupPage } from '../features/auth/signup-page';
@@ -27,6 +36,7 @@ export function AppRoutes() {
         <Route path="security" element={<SecurityPage />} />
         <Route path="docs" element={<DocsPage />} />
         <Route path="docs/*" element={<DocsPage />} />
+        <Route path="book/:slug" element={<PublicBookingPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
       <Route element={<AuthShell />}>
@@ -39,10 +49,19 @@ export function AppRoutes() {
           <Route path="mail" element={<MailPage />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="contacts" element={<ContactsPage />} />
+          <Route path="drive" element={<DrivePage />} />
+          <Route path="documents" element={<DocumentsPage />} />
+          <Route path="meet" element={<MeetPage />} />
+          <Route path="booking" element={<BookingPage />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="notes" element={<NotesPage />} />
+          <Route path="ai" element={<AiPage />} />
           <Route path="admin" element={<Navigate to="/admin/domains" replace />} />
           <Route path="admin/domains" element={<DomainsPage />} />
           <Route path="admin/domains/:domainId" element={<DnsWizardPage />} />
           <Route path="admin/users" element={<UsersPage />} />
+          <Route path="admin/compliance" element={<CompliancePage />} />
+          <Route path="admin/sso" element={<SsoPage />} />
         </Route>
       </Route>
     </Routes>
