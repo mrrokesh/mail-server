@@ -1,8 +1,12 @@
 # What's new
 
-Last updated: 2026-11-26 · v0.3.0
+Last updated: 2026-11-26 · v0.4.0
 
 Newest first, from [CHANGELOG.md](../CHANGELOG.md).
+
+## 0.4.0 — 2026-11-26
+
+Chat, masked aliases, and campaign drafts are in the product as working stubs. Enterprise can register a key reference, a SIEM destination, and a dedicated IP flag. None of those send mail or encrypt it. A partner can set the login name and logo. The colour stays the brand token.
 
 ## 0.3.0 — 2026-11-26
 

@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { ErrorNote, Field } from '../../components/ui/field';
 import { problemCode, requestSignIn } from './auth-api';
+import { useLoginBrand } from './use-brand';
 import { useSession } from '../../lib/session';
 import { safeNext, useDocumentTitle } from '../../lib/use-document-title';
 
@@ -17,6 +18,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { signIn } = useSession();
+  const brand = useLoginBrand();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState<ErrorCode | null>(null);
@@ -46,7 +48,7 @@ export function LoginPage() {
     <>
       <header className="stack">
         <h1 className="h1">Sign in</h1>
-        <p>Use the mailbox address and the account password.</p>
+        <p>Use the mailbox address and the account password for {brand.productName}.</p>
       </header>
       <form className="stack" onSubmit={onSubmit} noValidate>
         <Field

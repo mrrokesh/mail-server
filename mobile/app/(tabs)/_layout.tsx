@@ -76,6 +76,13 @@ export default function TabsLayout() {
           tabBarIcon: ({ color: iconColor }) => <TabIcon icon={Ellipsis} color={iconColor} />,
         }}
       />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          href: null,
+          title: 'Chat',
+        }}
+      />
     </Tabs>
   );
 }

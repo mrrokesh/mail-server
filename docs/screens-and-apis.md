@@ -1,6 +1,6 @@
 # Screens and APIs
 
-Last updated: 2026-11-26 · v0.3.0
+Last updated: 2026-11-26 · v0.4.0
 
 This is the MVP inventory. Paths under `/api/v1` are the control plane. The web app prefixes its calls with `/api/v1`. Full request bodies are in `backend/openapi.yaml`.
 
@@ -16,6 +16,7 @@ This is the MVP inventory. Paths under `/api/v1` are the control plane. The web 
 | `/signup`                  | Create a workspace             |
 | `/forgot-password`         | Password reset request         |
 | `/mail`                    | Three-pane mail                |
+| `/chat`                    | Chat conversations and threads |
 | `/calendar`                | Calendar                       |
 | `/contacts`                | Contacts                       |
 | `/drive`                   | Drive files and share links    |
@@ -26,11 +27,15 @@ This is the MVP inventory. Paths under `/api/v1` are the control plane. The web 
 | `/tasks`                   | Tasks                          |
 | `/notes`                   | Notes                          |
 | `/ai`                      | AI writing and summaries       |
+| `/privacy`                 | Masked aliases and key hooks   |
+| `/campaigns`               | Campaign drafts                |
 | `/admin/domains`           | Domain list                    |
 | `/admin/domains/:domainId` | DNS wizard                     |
 | `/admin/users`             | Users                          |
 | `/admin/compliance`        | Archive, retention, discovery  |
 | `/admin/sso`               | SSO and SCIM tokens            |
+| `/admin/enterprise`        | BYOK, SIEM, simulation, IP     |
+| `/admin/brand`             | Partner login host and logo    |
 
 `/admin` redirects to `/admin/domains`. Unknown marketing paths render the not-found page.
 
@@ -48,7 +53,8 @@ This is the MVP inventory. Paths under `/api/v1` are the control plane. The web 
 | `(tabs)/calendar`        | Placeholder                         |
 | `(tabs)/contacts`        | Placeholder                         |
 | `(tabs)/drive`           | File list when signed in to the API |
-| `(tabs)/more`            | Account and sign out                |
+| `(tabs)/more`            | Account, chat entry, and sign out   |
+| `(tabs)/chat`            | Chat, opened from More              |
 
 ## Auth
 
@@ -124,7 +130,7 @@ The mock mail plane files a message as `sent` when `from` is the caller's mailbo
 
 ## v1 modules
 
-These routes are served. Drive, Docs, Meet, booking, tasks, notes, AI, compliance, and SSO data is process memory.
+These routes are served. Docs, Meet, AI, compliance, and SSO stay in process memory. Drive, tasks, notes, and booking follow the v2 persistence note below.
 
 | Method and path                                                                               | Notes                                                                                                   |
 | --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -152,8 +158,38 @@ These routes are served. Drive, Docs, Meet, booking, tasks, notes, AI, complianc
 
 Domain list and create responses include `name` and `checks` for the wizard, and still include `domainName` plus `domain` and `records` on create. User responses include `name` and `status` beside `fullName` and `isActive`. An invite without a password returns `temporaryPassword` once.
 
+## v2 modules
+
+Chat is `mrrokesh-chat`. It is not Mattermost and it does not use Rocket.Chat `ee/`. The adapter field is `memory` or `postgres`.
+
+With `CONTROL_STORE=memory` (the default, including tests), module rows stay in the API process. With `CONTROL_STORE=postgres`, the adapter loads drive files and shares, tasks, notes, booking pages and appointments, plus the v2 tables below, on the first request for an organisation and writes them back when the response finishes. Docs, Meet, calendar events, contacts, AI, compliance, and SSO stay in memory either way. One API process owns that working set.
+
+| Method and path                                           | Notes                                                                                                                                                                                                                     |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`, `POST /api/v1/chat/conversations`                  | Business and above. `kind` is `direct`, `group`, or `channel`. A direct chat needs one other user id.                                                                                                                     |
+| `GET`, `POST /api/v1/chat/conversations/:id/messages`     | Members only. `threadRootId` replies to a top-level message. `driveFileId` must already exist in Drive.                                                                                                                   |
+| `GET /api/v1/chat/search?q=`                              | Up to 100 hits in conversations the caller belongs to.                                                                                                                                                                    |
+| `GET /api/v1/chat/presence`                               | `calendarLinked` is false. Presence is not computed.                                                                                                                                                                      |
+| `GET`, `POST /api/v1/privacy/aliases`                     | Starter and above. Addresses use `mask.mrrokesh.mail`, which is not routed. Caps are 10 on Starter and 50 on Business and Business Plus. The Privacy add-on and Enterprise are uncapped. Over the cap is `API-QUOTA-004`. |
+| `POST /api/v1/privacy/aliases/:id/disable`                | Turns the caller's alias off.                                                                                                                                                                                             |
+| `GET /api/v1/privacy/dashboard`                           | Basic on Starter. Full when the add-on or Enterprise is on. Tracker counts are null.                                                                                                                                      |
+| `PUT /api/v1/privacy/addon`                               | Owner or billing admin. This is not a charge.                                                                                                                                                                             |
+| `GET`, `PUT /api/v1/privacy/keys`                         | Requires the add-on or Enterprise. The body is a client public key and a wrapped private key. `serverDecrypts` and `generatesKeys` are false. An unprotected private key is rejected.                                     |
+| `POST /api/v1/privacy/recovery`                           | Body is `{ "registered": true }`. The phrase is not accepted.                                                                                                                                                             |
+| `GET /api/v1/enterprise`                                  | Enterprise. Owner or security admin.                                                                                                                                                                                      |
+| `POST /api/v1/enterprise/byok`                            | Version plus a key reference. Key material is rejected. Mail is not re-encrypted.                                                                                                                                         |
+| `POST /api/v1/enterprise/siem`                            | `webhook` needs an https URL. `syslog` needs `host:port`. Nothing is delivered.                                                                                                                                           |
+| `POST /api/v1/enterprise/siem/:id/sample`                 | Returns a sample event with `delivered: false`.                                                                                                                                                                           |
+| `POST /api/v1/enterprise/attack-simulations`              | Placeholder. `emailsSent` is 0.                                                                                                                                                                                           |
+| `PUT /api/v1/enterprise/dedicated-ip`                     | Flag only. `routed` is false.                                                                                                                                                                                             |
+| `GET`, `PUT /api/v1/admin/brand`                          | Business Plus owner. No colour field. Accent stays `brand`.                                                                                                                                                               |
+| `GET /api/v1/public/brand?host=`                          | Public. Unknown hosts return MR Rokesh.                                                                                                                                                                                   |
+| `GET`, `POST /api/v1/campaigns`                           | Starter and above. Drafts are not mailbox messages. Response includes `List-Unsubscribe` and `List-Unsubscribe-Post`.                                                                                                     |
+| `GET`, `POST /api/v1/public/campaigns/unsubscribe/:token` | RFC 8058 placeholder. POST accepts JSON or `application/x-www-form-urlencoded` with `email` and optional `List-Unsubscribe=One-Click`.                                                                                    |
+
 ## Still unmatched
 
 - Signup accepts Free, or Business as a trial. Starter, Business Plus, and Enterprise are not self-serve.
 - Web sign-out clears the browser token and does not call `POST /api/v1/auth/logout`.
-- v1 module rows above are not in Postgres. Restarting the API clears them.
+- Docs, Meet, calendar events, contacts, AI, compliance, and SSO are still process memory. Restarting the API clears them.
+- Drive, tasks, notes, booking, chat, privacy, enterprise, brand, and campaigns are process memory unless `CONTROL_STORE=postgres` and `0002_v2_modules.sql` has been applied.

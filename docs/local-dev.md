@@ -49,9 +49,13 @@ With Postgres running and `DATABASE_URL` pointing at the migration user (the Com
 pnpm --filter @mrrokesh/backend db:migrate
 ```
 
-That runs `backend/src/db/migrations/0001_initial_schema.sql`. When `APP_DB_PASSWORD` is set, it also sets the password for `mrrokesh_app`. Point `APP_DATABASE_URL` at that role. The role cannot bypass row-level security. The Compose user can, so the running API should not use `DATABASE_URL`.
+That applies `backend/src/db/migrations/0001_initial_schema.sql` and `0002_v2_modules.sql`. A later run skips a file that is already recorded in `schema_migrations`. If the initial schema is already present, it is recorded and only the v2 file runs. When `APP_DB_PASSWORD` is set, it also sets the password for `mrrokesh_app`. Point `APP_DATABASE_URL` at that role. The role cannot bypass row-level security. The Compose user can, so the running API should not use `DATABASE_URL`.
 
-`backend/src/db/schema.ts` is the typed mirror. The SQL file is what migrate applies. Plan entitlements in the database are filled from the catalog in code on startup.
+A managed Postgres login that cannot `CREATE ROLE` still gets the tables. The migration catches that privilege error, skips grants to `mrrokesh_app`, and does not `FORCE ROW LEVEL SECURITY`. Set `APP_DATABASE_URL` to the same value as `DATABASE_URL` and leave `APP_DB_PASSWORD` unset. That owner bypasses row-level security. Local Docker still creates `mrrokesh_app` and forces row-level security for it.
+
+Set `CONTROL_STORE=postgres` to persist drive metadata, tasks, notes, booking, chat, and the other v2 tables. Leave it unset to keep those rows in memory.
+
+`backend/src/db/schema.ts` is the typed mirror. The SQL files are what migrate applies. Plan entitlements in the database are filled from the catalog in code on startup.
 
 The mobile package typechecks with the rest of the repo. Start the Expo shell with `pnpm --filter @mrrokesh/mobile dev` when you want a simulator.
 

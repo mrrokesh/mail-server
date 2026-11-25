@@ -1,10 +1,12 @@
 import { loadConfig, loadEnvFile } from './config';
 import { createPostgresStore } from './db/postgres-store';
+import { createPostgresWorkspace } from './db/postgres-workspace';
 import { LiveDns } from './dns/lookup';
 import { HttpStalwartPlane } from './mail/http-stalwart';
 import { MockMailPlane } from './mail/mock-plane';
 import { buildServer } from './server';
 import { MemoryStore } from './store/memory';
+import { WorkspaceStore } from './v1/workspace';
 
 loadEnvFile();
 const config = loadConfig();
@@ -12,16 +14,16 @@ const port = Number(process.env.API_PORT ?? 4000);
 const host = process.env.API_HOST ?? '127.0.0.1';
 
 const storeMode = process.env.CONTROL_STORE ?? 'memory';
-const store =
-  storeMode === 'postgres'
-    ? await createPostgresStore(process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL ?? '')
-    : new MemoryStore();
+const databaseUrl = process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
+const store = storeMode === 'postgres' ? await createPostgresStore(databaseUrl) : new MemoryStore();
+const workspace =
+  storeMode === 'postgres' ? createPostgresWorkspace(databaseUrl) : new WorkspaceStore();
 
 if (storeMode === 'postgres') {
   const url = process.env.APP_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
   if (!url.includes('mrrokesh_app')) {
     console.warn(
-      'API database URL is not the mrrokesh_app role. Superusers bypass row-level security.',
+      'API database URL is not the mrrokesh_app role. The table owner and superusers bypass row-level security. On a managed database that cannot create mrrokesh_app, that bypass is expected.',
     );
   }
   await store.seedPlans();
@@ -36,6 +38,7 @@ const mail =
 const app = buildServer({
   config,
   store,
+  workspace,
   mail,
   dns: new LiveDns(),
 });

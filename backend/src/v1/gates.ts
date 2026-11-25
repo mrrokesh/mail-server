@@ -55,6 +55,13 @@ export function meetLimits(tier: PlanTier): {
   return { participants: 1000, minutes: 24 * 60, recording: true };
 }
 
+export function maskedAliasCap(tier: PlanTier, privacyIncluded: boolean): number {
+  if (privacyIncluded || tier === 'enterprise') return -1;
+  if (tier === 'starter') return 10;
+  if (tier === 'business' || tier === 'business_plus') return 50;
+  return 0;
+}
+
 export function aiDailyCap(tier: PlanTier): number {
   if (tier === 'starter') return 25;
   if (tier === 'business') return 80;

@@ -1,6 +1,8 @@
 import {
+  bigint,
   boolean,
   customType,
+  date,
   integer,
   jsonb,
   pgEnum,
@@ -404,3 +406,73 @@ export const sendingMinute = pgTable(
   },
   (table) => [primaryKey({ columns: [table.organizationId, table.userId, table.minuteBucket] })],
 );
+
+export const driveFiles = pgTable('drive_files', {
+  id: uuid('id').primaryKey(),
+  organizationId: uuid('organization_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  ownerUserId: uuid('owner_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  contentType: text('content_type').notNull(),
+  sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull(),
+  createdAt: timestamps.createdAt,
+});
+
+export const tasks = pgTable('tasks', {
+  id: uuid('id').primaryKey(),
+  organizationId: uuid('organization_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  ownerUserId: uuid('owner_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  dueDate: date('due_date'),
+  priority: text('priority').notNull(),
+  done: boolean('done').notNull().default(false),
+  createdAt: timestamps.createdAt,
+});
+
+export const notes = pgTable('notes', {
+  id: uuid('id').primaryKey(),
+  organizationId: uuid('organization_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  ownerUserId: uuid('owner_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  body: text('body').notNull().default(''),
+  createdAt: timestamps.createdAt,
+});
+
+export const bookingPages = pgTable('booking_pages', {
+  id: uuid('id').primaryKey(),
+  organizationId: uuid('organization_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  ownerUserId: uuid('owner_user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  slug: citext('slug').notNull().unique(),
+  durationMinutes: integer('duration_minutes').notNull(),
+  timezone: text('timezone').notNull(),
+  createdAt: timestamps.createdAt,
+});
+
+export const chatConversations = pgTable('chat_conversations', {
+  id: uuid('id').primaryKey(),
+  organizationId: uuid('organization_id')
+    .notNull()
+    .references(() => organizations.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull(),
+  title: text('title').notNull(),
+  createdBy: uuid('created_by')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamps.createdAt,
+});

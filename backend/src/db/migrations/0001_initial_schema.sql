@@ -8,7 +8,10 @@
 --   * RLS hides rows when app.current_org_id is unset, instead of casting '' to uuid.
 --   * Login, refresh, reset, checkout, passkey, slug, and domain lookups are SECURITY DEFINER
 --     functions. They are the only intended RLS bypasses, and they are not HTTP endpoints.
---   * The API must connect as mrrokesh_app (NOBYPASSRLS). A superuser bypasses FORCE RLS.
+--   * The API should connect as mrrokesh_app (NOBYPASSRLS). A superuser bypasses FORCE RLS.
+--   * A managed login that cannot CREATE ROLE skips mrrokesh_app. RLS stays enabled, but
+--     FORCE is left off so that table owner can still read and write. That owner bypass
+--     is a managed-database limitation. Local Docker still creates the role and forces RLS.
 -- USD prices are 0 until international billing (v2). SAC on invoices is chosen in application code.
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -17,7 +20,12 @@ CREATE EXTENSION IF NOT EXISTS "citext";
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mrrokesh_app') THEN
-    CREATE ROLE mrrokesh_app NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE LOGIN;
+    BEGIN
+      CREATE ROLE mrrokesh_app NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE LOGIN;
+    EXCEPTION
+      WHEN insufficient_privilege THEN
+        RAISE NOTICE 'mrrokesh_app was not created (%). The table owner bypasses row-level security.', SQLERRM;
+    END;
   END IF;
 END $$;
 
@@ -338,7 +346,9 @@ AS $$
 $$;
 
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE organizations FORCE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS org_select ON organizations;
+DROP POLICY IF EXISTS org_update ON organizations;
+DROP POLICY IF EXISTS org_insert ON organizations;
 CREATE POLICY org_select ON organizations FOR SELECT USING (app_tenant_visible(id));
 CREATE POLICY org_update ON organizations FOR UPDATE
   USING (app_tenant_visible(id)) WITH CHECK (app_tenant_visible(id));
@@ -347,7 +357,17 @@ CREATE POLICY org_insert ON organizations FOR INSERT WITH CHECK (true);
 DO $$
 DECLARE
   tbl text;
+  force_rls boolean;
 BEGIN
+  -- Docker creates mrrokesh_app above, so FORCE ROW LEVEL SECURITY still applies there.
+  -- A managed database with one login cannot create that role. Forcing RLS would reject
+  -- the owner's writes and the SECURITY DEFINER lookups, so FORCE stays off.
+  SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mrrokesh_app') INTO force_rls;
+
+  IF force_rls THEN
+    EXECUTE 'ALTER TABLE organizations FORCE ROW LEVEL SECURITY';
+  END IF;
+
   FOREACH tbl IN ARRAY ARRAY[
     'org_subscriptions', 'users', 'refresh_tokens', 'webauthn_passkeys',
     'domains', 'domain_dkim_keys', 'mailboxes', 'mailbox_aliases',
@@ -357,7 +377,10 @@ BEGIN
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
-    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tbl);
+    IF force_rls THEN
+      EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', tbl);
+    END IF;
+    EXECUTE format('DROP POLICY IF EXISTS tenant_isolation ON %I', tbl);
     EXECUTE format(
       'CREATE POLICY tenant_isolation ON %I USING (app_tenant_visible(organization_id)) WITH CHECK (app_tenant_visible(organization_id))',
       tbl
@@ -449,19 +472,27 @@ REVOKE ALL ON FUNCTION app_lookup_checkout(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app_lookup_passkey(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app_lookup_org_by_slug(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION app_lookup_domain_by_name(text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app_lookup_user_by_email(text) TO mrrokesh_app;
-GRANT EXECUTE ON FUNCTION app_lookup_refresh_by_hash(text) TO mrrokesh_app;
-GRANT EXECUTE ON FUNCTION app_lookup_reset_by_hash(text) TO mrrokesh_app;
-GRANT EXECUTE ON FUNCTION app_lookup_checkout(uuid) TO mrrokesh_app;
-GRANT EXECUTE ON FUNCTION app_lookup_passkey(text) TO mrrokesh_app;
-GRANT EXECUTE ON FUNCTION app_lookup_org_by_slug(text) TO mrrokesh_app;
-GRANT EXECUTE ON FUNCTION app_lookup_domain_by_name(text) TO mrrokesh_app;
-GRANT EXECUTE ON FUNCTION app_tenant_visible(uuid) TO mrrokesh_app;
 
-GRANT USAGE ON SCHEMA public TO mrrokesh_app;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mrrokesh_app;
-REVOKE UPDATE, DELETE ON audit_logs FROM mrrokesh_app;
-REVOKE DELETE ON organizations FROM mrrokesh_app;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'mrrokesh_app') THEN
+    RAISE NOTICE 'Skipping grants to mrrokesh_app; the role is absent.';
+    RETURN;
+  END IF;
+
+  EXECUTE 'GRANT EXECUTE ON FUNCTION app_lookup_user_by_email(text) TO mrrokesh_app';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION app_lookup_refresh_by_hash(text) TO mrrokesh_app';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION app_lookup_reset_by_hash(text) TO mrrokesh_app';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION app_lookup_checkout(uuid) TO mrrokesh_app';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION app_lookup_passkey(text) TO mrrokesh_app';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION app_lookup_org_by_slug(text) TO mrrokesh_app';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION app_lookup_domain_by_name(text) TO mrrokesh_app';
+  EXECUTE 'GRANT EXECUTE ON FUNCTION app_tenant_visible(uuid) TO mrrokesh_app';
+  EXECUTE 'GRANT USAGE ON SCHEMA public TO mrrokesh_app';
+  EXECUTE 'GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO mrrokesh_app';
+  EXECUTE 'REVOKE UPDATE, DELETE ON audit_logs FROM mrrokesh_app';
+  EXECUTE 'REVOKE DELETE ON organizations FROM mrrokesh_app';
+END $$;
 
 INSERT INTO subscription_plans (
   tier, display_name, price_inr_monthly, price_inr_annual,

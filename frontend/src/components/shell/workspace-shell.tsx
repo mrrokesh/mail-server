@@ -29,6 +29,12 @@ export function WorkspaceShell() {
             Mail
           </NavLink>
           <NavLink
+            to="/chat"
+            className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
+          >
+            Chat
+          </NavLink>
+          <NavLink
             to="/calendar"
             className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
           >
@@ -79,6 +85,18 @@ export function WorkspaceShell() {
           <NavLink to="/ai" className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}>
             AI
           </NavLink>
+          <NavLink
+            to="/privacy"
+            className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
+          >
+            Privacy
+          </NavLink>
+          <NavLink
+            to="/campaigns"
+            className={({ isActive }) => `nav-link${isActive ? ' is-active' : ''}`}
+          >
+            Campaigns
+          </NavLink>
           <NavLink to="/admin/domains" className={() => `nav-link${admin ? ' is-active' : ''}`}>
             Admin
           </NavLink>
@@ -111,6 +129,8 @@ export function WorkspaceShell() {
             <NavLink to="/admin/users">Users</NavLink>
             <NavLink to="/admin/compliance">Compliance</NavLink>
             <NavLink to="/admin/sso">SSO</NavLink>
+            <NavLink to="/admin/enterprise">Enterprise</NavLink>
+            <NavLink to="/admin/brand">Brand</NavLink>
           </nav>
         ) : null}
         <main id="content" className="operate">

@@ -182,6 +182,7 @@ export async function loadTenant(
     plan,
     limits: effectiveLimits(plan, subscription),
   };
+  await request.server.deps.workspace.hydrate(org.id);
   request.tenant = tenant;
   return tenant;
 }

@@ -1,9 +1,11 @@
 import { Mail } from 'lucide-react';
 import { Link, Outlet } from 'react-router-dom';
+import { useLoginBrand } from '../../features/auth/use-brand';
 import { Icon } from '../ui/icon';
 import { ThemeToggle } from '../ui/theme-toggle';
 
 export function AuthShell() {
+  const brand = useLoginBrand();
   return (
     <div>
       <a className="skip" href="#content">
@@ -11,8 +13,12 @@ export function AuthShell() {
       </a>
       <header className="topbar">
         <Link className="brand" to="/">
-          <Icon icon={Mail} />
-          <span>MR Rokesh</span>
+          {brand.logoUrl ? (
+            <img className="brand-logo" src={brand.logoUrl} alt="" referrerPolicy="no-referrer" />
+          ) : (
+            <Icon icon={Mail} />
+          )}
+          <span>{brand.productName}</span>
         </Link>
         <div className="nav-tools">
           <ThemeToggle />

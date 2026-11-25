@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: MR Rokesh Mail API
-  version: 0.3.0
-  summary: Control plane for tenants, mail, billing, DNS, and v1 modules.
+  version: 0.4.0
+  summary: Control plane for tenants, mail, billing, DNS, and v1 and v2 modules.
   description: |
     Authenticated routes take `Authorization: Bearer <access>` (15 minutes).
     Refresh tokens are opaque, last 30 days, and are also set as the HttpOnly
@@ -29,9 +29,15 @@ info:
     `{ mfaRequired: true, challengeToken }`. `POST /api/v1/auth/mfa/verify` exchanges that
     challenge and `code` (or `totpCode`) for a session.
 
-    v1 Drive, Docs, Meet, booking, tasks, notes, AI, compliance, and SSO records are
-    process memory. Collabora and LiveKit are stub adapters. SSO metadata is AES-256-GCM
-    and is never returned. ActiveSync and EWS are flags only; Stalwart serves the protocols.
+    v1 Docs, Meet, calendar events, contacts, AI, compliance, and SSO records stay in
+    process memory. Drive metadata, tasks, notes, and booking persist when
+    `CONTROL_STORE=postgres` after `0002_v2_modules.sql`. Collabora and LiveKit are stub
+    adapters. SSO metadata is AES-256-GCM and is never returned. ActiveSync and EWS are
+    flags only; Stalwart serves the protocols.
+
+    v2 chat is the in-house `mrrokesh-chat` service. Privacy key routes store client
+    material and do not encrypt mail. Enterprise SIEM and attack-simulation routes do
+    not deliver or send. Campaign drafts are not mailbox messages.
 servers:
   - url: http://127.0.0.1:4000
     description: Local API
@@ -53,6 +59,11 @@ tags:
   - name: ai
   - name: compliance
   - name: sso
+  - name: chat
+  - name: privacy
+  - name: enterprise
+  - name: brand
+  - name: campaigns
 paths:
   /health:
     get:
@@ -1472,6 +1483,238 @@ paths:
       responses:
         '201':
           description: Contact.
+  /api/v1/chat/conversations:
+    get:
+      operationId: listChatConversations
+      tags: [chat]
+      summary: List conversations for the caller
+      responses:
+        '200':
+          description: mrrokesh-chat conversations. adapter is memory or postgres.
+    post:
+      operationId: createChatConversation
+      tags: [chat]
+      summary: Create a direct chat, group, or channel
+      responses:
+        '201':
+          description: Conversation. Business and above.
+  /api/v1/chat/conversations/{id}/messages:
+    get:
+      operationId: listChatMessages
+      tags: [chat]
+      summary: List messages and thread replies
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Messages for a member.
+    post:
+      operationId: createChatMessage
+      tags: [chat]
+      summary: Post a message or a thread reply
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '201':
+          description: Message. driveFileId must already exist.
+  /api/v1/chat/search:
+    get:
+      operationId: searchChat
+      tags: [chat]
+      summary: Search chat history the caller can see
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Up to 100 hits.
+  /api/v1/chat/presence:
+    get:
+      operationId: chatPresence
+      tags: [chat]
+      summary: Presence stub. Not linked to calendar.
+      responses:
+        '200':
+          description: calendarLinked is false.
+  /api/v1/privacy/aliases:
+    get:
+      operationId: listMaskedAliases
+      tags: [privacy]
+      summary: List masked aliases
+      responses:
+        '200':
+          description: Addresses on mask.mrrokesh.mail. Not routed.
+    post:
+      operationId: createMaskedAlias
+      tags: [privacy]
+      summary: Create a masked alias
+      responses:
+        '201':
+          description: Alias. Over the cap is API-QUOTA-004.
+  /api/v1/privacy/aliases/{id}/disable:
+    post:
+      operationId: disableMaskedAlias
+      tags: [privacy]
+      summary: Disable one masked alias
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Alias with enabled false.
+  /api/v1/privacy/dashboard:
+    get:
+      operationId: privacyDashboard
+      tags: [privacy]
+      summary: Privacy dashboard stub
+      responses:
+        '200':
+          description: Tracker counts are null. Zero-access is a hook.
+  /api/v1/privacy/addon:
+    put:
+      operationId: setPrivacyAddon
+      tags: [privacy]
+      summary: Record the Privacy add-on flag. This is not a charge.
+      responses:
+        '200':
+          description: addon and billed false.
+  /api/v1/privacy/keys:
+    get:
+      operationId: listPrivacyKeys
+      tags: [privacy]
+      summary: List stored key hooks without private material
+      responses:
+        '200':
+          description: Fingerprints. serverDecrypts and generatesKeys are false.
+    put:
+      operationId: savePrivacyKey
+      tags: [privacy]
+      summary: Store a client public key and a wrapped private key
+      responses:
+        '200':
+          description: Hook only. An unprotected private key is rejected.
+  /api/v1/privacy/recovery:
+    post:
+      operationId: registerPrivacyRecovery
+      tags: [privacy]
+      summary: Record that the client has a recovery phrase
+      responses:
+        '200':
+          description: phraseStored is false. The phrase is not accepted.
+  /api/v1/enterprise:
+    get:
+      operationId: enterpriseHome
+      tags: [enterprise]
+      summary: Enterprise hooks for the organisation
+      responses:
+        '200':
+          description: BYOK versions, SIEM destinations, simulations, dedicated IP flag.
+  /api/v1/enterprise/byok:
+    post:
+      operationId: registerByok
+      tags: [enterprise]
+      summary: Register a customer key version
+      responses:
+        '201':
+          description: Key reference only. appliedToMail is false.
+  /api/v1/enterprise/siem:
+    post:
+      operationId: saveSiem
+      tags: [enterprise]
+      summary: Store a webhook or syslog destination
+      responses:
+        '201':
+          description: Destination. delivered is false.
+  /api/v1/enterprise/siem/{id}/sample:
+    post:
+      operationId: sampleSiem
+      tags: [enterprise]
+      summary: Build a SIEM sample without sending it
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Sample event. delivered is false.
+  /api/v1/enterprise/attack-simulations:
+    post:
+      operationId: createAttackSimulation
+      tags: [enterprise]
+      summary: Create an attack-simulation placeholder
+      responses:
+        '201':
+          description: emailsSent is 0.
+  /api/v1/enterprise/dedicated-ip:
+    put:
+      operationId: setDedicatedIp
+      tags: [enterprise]
+      summary: Set the dedicated IP flag
+      responses:
+        '200':
+          description: routed is false.
+  /api/v1/admin/brand:
+    get:
+      operationId: getBrand
+      tags: [brand]
+      summary: Read the partner login brand
+      responses:
+        '200':
+          description: Host, name, and logo. accentToken is brand.
+    put:
+      operationId: saveBrand
+      tags: [brand]
+      summary: Save the login host, name, and https logo
+      responses:
+        '200':
+          description: Colour fields are rejected.
+  /api/v1/public/brand:
+    get:
+      operationId: publicBrand
+      tags: [brand]
+      summary: Public login brand for a host
+      security: []
+      parameters:
+        - name: host
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Custom brand or the MR Rokesh default.
+  /api/v1/campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List campaign drafts
+      responses:
+        '200':
+          description: Drafts are not mailbox messages.
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a campaign draft with RFC 8058 headers
+      responses:
+        '201':
+          description: List-Unsubscribe and List-Unsubscribe-Post. Nothing is sent.
+  /api/v1/public/campaigns/unsubscribe/{token}:
+    get:
+      operationId: unsubscribeInfo
+      tags: [campaigns]
+      summary: Describe the one-click unsubscribe placeholder
+      security: []
+      responses:
+        '200':
+          description: Instructions. No mail is sent.
+    post:
+      operationId: unsubscribe
+      tags: [campaigns]
+      summary: Record an RFC 8058 one-click unsubscribe
+      security: []
+      responses:
+        '200':
+          description: Suppression. Accepts JSON or form body.
 components:
   securitySchemes:
     bearerAuth:

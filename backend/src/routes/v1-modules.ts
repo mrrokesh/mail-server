@@ -112,6 +112,7 @@ export function registerV1(app: FastifyInstance): void {
   app.get('/api/v1/public/drive/:token', async (request) => {
     const params = parseBody(z.object({ token: z.string().min(20) }), request.params);
     const query = parseBody(z.object({ password: z.string().optional() }), request.query);
+    await app.deps.workspace.prepareShareToken(params.token);
     return readPublicShare(app.deps, params.token, query.password);
   });
 
@@ -199,6 +200,7 @@ export function registerV1(app: FastifyInstance): void {
 
   app.get('/api/v1/public/booking/:slug', async (request) => {
     const params = parseBody(z.object({ slug: slugSchema }), request.params);
+    await app.deps.workspace.prepareBookingSlug(params.slug);
     return publicBooking(app.deps, params.slug);
   });
 
@@ -212,6 +214,7 @@ export function registerV1(app: FastifyInstance): void {
       }),
       request.body,
     );
+    await app.deps.workspace.prepareBookingSlug(params.slug);
     const created = await bookSlot(app.deps, params.slug, body, meta(request));
     return reply.code(201).send(created);
   });

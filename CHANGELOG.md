@@ -4,6 +4,17 @@ All notable changes to MR Rokesh Mail are recorded here. The docs page "What's n
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-26
+
+### Added
+
+- Chat for direct messages, groups, channels, and threads on an in-house service (`mrrokesh-chat`), with web and mobile entry from More. Business and above.
+- Privacy add-on stubs: masked aliases, a dashboard that does not invent tracker counts, and client key hooks that do not generate keys or encrypt mail.
+- Enterprise hooks for a BYOK key version, a SIEM webhook or syslog destination, an attack-simulation placeholder, and a dedicated IP flag. None of these send data or move mail.
+- Partner login brand: host, product name, and https logo. Colour stays on the brand token.
+- Campaign drafts as a separate add-on, with an RFC 8058 one-click unsubscribe placeholder. Drafts are not mailbox messages.
+- Postgres tables and an adapter for drive metadata, tasks, notes, booking, and the v2 records. `CONTROL_STORE=postgres` loads an organisation on first use and writes it back at the end of the request. The default store remains memory.
+
 ## [0.3.0] - 2026-11-26
 
 ### Added

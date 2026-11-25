@@ -1,5 +1,6 @@
 import { tokens } from '@mrrokesh/shared';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Button } from '../../src/components/ui/Button';
 import { Screen } from '../../src/components/ui/Screen';
 import { useSession } from '../../src/lib/session';
@@ -13,6 +14,7 @@ const ROWS = [
 ] as const;
 
 export default function MoreScreen() {
+  const router = useRouter();
   const { color } = useTheme();
   const type = useType();
   const { email, status, signOut } = useSession();
@@ -34,6 +36,20 @@ export default function MoreScreen() {
           ) : null}
         </View>
         <View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open chat"
+            onPress={() => router.push('/(tabs)/chat')}
+            style={{
+              paddingVertical: tokens.space[3],
+              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomColor: color.border,
+              gap: tokens.space[1],
+            }}
+          >
+            <Text style={type.body}>Chat</Text>
+            <Text style={type.caption}>Direct messages, groups, and channels.</Text>
+          </Pressable>
           {ROWS.map((row) => (
             <View
               key={row.title}

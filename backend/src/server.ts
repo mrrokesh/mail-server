@@ -10,6 +10,7 @@ import type { MailPlane } from './mail/plane';
 import { MockMailPlane } from './mail/mock-plane';
 import { registerApi } from './routes/register';
 import { registerV1 } from './routes/v1-modules';
+import { registerV2 } from './routes/v2-modules';
 import type { ControlStore } from './store/types';
 import { MemoryStore } from './store/memory';
 import { WorkspaceStore } from './v1/workspace';
@@ -19,6 +20,7 @@ export interface BuildOptions {
   logger?: boolean;
   config?: AppConfig;
   store?: ControlStore;
+  workspace?: WorkspaceStore;
   mail?: MailPlane;
   dns?: DnsLookup;
   now?: () => Date;
@@ -29,7 +31,7 @@ export function buildServer(options?: BuildOptions) {
   const deps: AppDeps = {
     config,
     store: options?.store ?? new MemoryStore(),
-    workspace: new WorkspaceStore(),
+    workspace: options?.workspace ?? new WorkspaceStore(),
     mail: options?.mail ?? new MockMailPlane(),
     dns: options?.dns ?? new LiveDns(),
     challenges: new Map(),
@@ -47,6 +49,18 @@ export function buildServer(options?: BuildOptions) {
   app.decorate('deps', deps);
 
   app.removeContentTypeParser('application/json');
+  app.addContentTypeParser(
+    'application/x-www-form-urlencoded',
+    { parseAs: 'string' },
+    (_request, body, done) => {
+      const raw = typeof body === 'string' ? body : body.toString('utf8');
+      const params = new URLSearchParams(raw);
+      const parsed: Record<string, string> = {};
+      for (const [key, value] of params) parsed[key] = value;
+      done(null, parsed);
+    },
+  );
+
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (request, body, done) => {
     const raw = typeof body === 'string' ? body : body.toString('utf8');
     request.rawBody = raw;
@@ -84,6 +98,15 @@ export function buildServer(options?: BuildOptions) {
 
   registerApi(app);
   registerV1(app);
+  registerV2(app);
+
+  app.addHook('onResponse', async () => {
+    try {
+      await deps.workspace.flush();
+    } catch (error) {
+      app.log.error({ err: error }, 'module flush failed');
+    }
+  });
 
   app.setNotFoundHandler((request, reply) => {
     const error = ERROR_CODES['API-RES-404'];
