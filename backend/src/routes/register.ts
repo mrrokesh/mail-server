@@ -38,6 +38,7 @@ import {
   type AuthMeta,
 } from '../services/auth';
 import {
+  activateTestCheckout,
   applyRazorpayWebhook,
   createCheckout,
   invoiceList,
@@ -178,7 +179,7 @@ const signupSchema = z
 
 export function registerApi(app: FastifyInstance): void {
   const postSignup = async (request: FastifyRequest, reply: FastifyReply) => {
-    enforceRate(
+    await enforceRate(
       app.deps.rates,
       `signup:${clientIp(request) ?? 'local'}`,
       app.deps.config.rateLimits.signup,
@@ -234,7 +235,7 @@ export function registerApi(app: FastifyInstance): void {
       }),
       request.body,
     );
-    enforceRate(
+    await enforceRate(
       app.deps.rates,
       `login:${clientIp(request) ?? 'local'}:${body.email}`,
       app.deps.config.rateLimits.login,
@@ -289,7 +290,7 @@ export function registerApi(app: FastifyInstance): void {
   });
 
   const postForgot = async (request: FastifyRequest, reply: FastifyReply) => {
-    enforceRate(
+    await enforceRate(
       app.deps.rates,
       `reset:${clientIp(request) ?? 'local'}`,
       app.deps.config.rateLimits.passwordReset,
@@ -354,7 +355,7 @@ export function registerApi(app: FastifyInstance): void {
         }),
       request.body,
     );
-    enforceRate(
+    await enforceRate(
       app.deps.rates,
       `mfa:${clientIp(request) ?? 'local'}`,
       app.deps.config.rateLimits.login,
@@ -430,7 +431,7 @@ export function registerApi(app: FastifyInstance): void {
 
   app.post('/api/v1/auth/passkeys/authenticate/options', async (request, reply) => {
     const body = parseBody(z.object({ email: emailSchema }), request.body);
-    enforceRate(
+    await enforceRate(
       app.deps.rates,
       `login:${clientIp(request) ?? 'local'}:${body.email}`,
       app.deps.config.rateLimits.login,
@@ -609,7 +610,7 @@ export function registerApi(app: FastifyInstance): void {
   app.post('/api/v1/domains/:id/verify', async (request, reply) => {
     const tenant = await loadTenant(request, 'session');
     assertRole(tenant.user.role, DOMAIN_ROLES);
-    enforceRate(
+    await enforceRate(
       app.deps.rates,
       `dns:${tenant.org.id}`,
       app.deps.config.rateLimits.dns,
@@ -783,6 +784,13 @@ export function registerApi(app: FastifyInstance): void {
     );
     const checkout = await createCheckout(app.deps, tenant, body, meta(request));
     return reply.code(201).send(checkout);
+  });
+
+  app.post('/api/v1/billing/checkout/:id/test-webhook', async (request) => {
+    const tenant = await loadTenant(request, 'session');
+    assertRole(tenant.user.role, BILLING_ROLES);
+    const params = parseBody(z.object({ id: z.string().uuid() }), request.params);
+    return activateTestCheckout(app.deps, tenant, params.id);
   });
 
   app.post('/api/v1/billing/webhooks/razorpay', async (request) => {

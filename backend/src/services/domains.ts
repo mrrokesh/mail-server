@@ -202,7 +202,7 @@ export async function verifyDomain(
     value.toLowerCase().startsWith('v=dmarc1'),
   );
   const mtaOk = (await deps.dns.resolveCname(`_mta-sts.${name}`)).some(
-    (value) => value.replace(/\.$/, '').toLowerCase() === 'mta-sts.mrrokesh.mail',
+    (value) => value.replace(/\.$/, '').toLowerCase() === 'mta-sts.rokeshcloud.com',
   );
   const score = [true, mxOk, spfOk, dkimOk, dmarcOk].filter(Boolean).length * 20;
   const updated = await deps.store.updateDomain(tenant.org.id, domain.id, {

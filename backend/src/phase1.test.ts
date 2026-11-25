@@ -89,7 +89,7 @@ function plant(
 ) {
   for (const record of records) {
     if (record.purpose === 'mx') {
-      dns.setMx(record.host, [{ exchange: 'mx1.mrrokesh.mail', priority: 10 }]);
+      dns.setMx(record.host, [{ exchange: 'mx1.rokeshcloud.com', priority: 10 }]);
       continue;
     }
     if (record.type === 'CNAME') dns.setCname(record.host, [record.value]);

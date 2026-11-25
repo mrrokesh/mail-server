@@ -54,7 +54,13 @@ export async function submitMessage(
   const domain = (await deps.store.listDomains(tenant.org.id)).find(
     (row) => row.domainName === domainName,
   );
-  if (!domain?.isVerified || !domain.spfVerified || !domain.dkimVerified) {
+  const hosted = new Set(
+    (await deps.store.listDomains(tenant.org.id)).map((row) => row.domainName),
+  );
+  const internalOnly = input.to.every((recipient) =>
+    hosted.has(recipient.split('@')[1]?.toLowerCase() ?? ''),
+  );
+  if ((!domain?.isVerified || !domain.spfVerified || !domain.dkimVerified) && !internalOnly) {
     throw new ApiError('API-MAIL-004');
   }
   if (input.to.length === 0) {
@@ -103,15 +109,30 @@ export async function submitMessage(
       ).toISOString(),
     });
   }
+  const recipients = input.to.map((recipient) => recipient.toLowerCase());
   const submitted = await deps.mail.submitMessage({
     organizationId: tenant.org.id,
     principalId: mailbox.stalwartPrincipalId,
     from,
-    to: input.to.map((recipient) => recipient.toLowerCase()),
+    to: recipients,
     subject: input.subject,
     text: input.text,
     sizeBytes,
   });
+  const localBoxes = await deps.store.listMailboxes(tenant.org.id);
+  for (const recipient of recipients) {
+    const target = localBoxes.find((row) => row.address === recipient);
+    if (!target || target.id === mailbox.id) continue;
+    await deps.mail.submitMessage({
+      organizationId: tenant.org.id,
+      principalId: target.stalwartPrincipalId,
+      from,
+      to: recipients,
+      subject: input.subject,
+      text: input.text,
+      sizeBytes,
+    });
+  }
   await writeAudit(deps.store, {
     at: now,
     organizationId: tenant.org.id,
@@ -201,10 +222,6 @@ function visibleMailboxes(mailboxes: MailboxRecord[], tenant: TenantContext): Ma
   return mailboxes.filter((row) => row.userId === tenant.user.id || admin);
 }
 
-function folderOf(message: StoredMessage, ownAddresses: Set<string>): ClientFolder {
-  return ownAddresses.has(message.from.toLowerCase()) ? 'sent' : 'inbox';
-}
-
 export async function listClientMessages(
   deps: AppDeps,
   tenant: TenantContext,
@@ -240,7 +257,7 @@ export async function listClientMessages(
   for (const mailbox of targets) {
     const rows = await deps.mail.listMessages(tenant.org.id, mailbox.stalwartPrincipalId);
     for (const row of rows) {
-      const folder = folderOf(row, ownAddresses);
+      const folder = row.from.toLowerCase() === mailbox.address ? 'sent' : 'inbox';
       if (filter.mailbox && folder !== filter.mailbox) continue;
       const fromName =
         names.get(row.from.toLowerCase()) ??

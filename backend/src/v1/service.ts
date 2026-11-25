@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { utcDay } from '../billing/entitlements';
 import { encryptString } from '../crypto/aes';
 import { hashOpaqueToken, newOpaqueToken } from '../crypto/password';
@@ -32,14 +35,34 @@ const DOC_TEMPLATES = [
   { id: 'offer-letter', name: 'Offer letter', kind: 'document' as const },
 ];
 
+function driveRoot(): string {
+  return process.env.DRIVE_DATA_DIR && process.env.DRIVE_DATA_DIR.length > 0
+    ? process.env.DRIVE_DATA_DIR
+    : path.join(process.cwd(), 'data', 'drive');
+}
+
+function drivePath(organizationId: string, fileId: string): string {
+  return path.join(driveRoot(), organizationId, fileId);
+}
+
+async function readDriveBytes(organizationId: string, fileId: string): Promise<Buffer | null> {
+  try {
+    return await readFile(drivePath(organizationId, fileId));
+  } catch {
+    return null;
+  }
+}
+
 function presentFile(file: {
   id: string;
+  organizationId: string;
   name: string;
   contentType: string;
   sizeBytes: number;
   createdAt: string;
 }) {
-  return { ...file, upload: 'stub' as const };
+  const stored = existsSync(drivePath(file.organizationId, file.id));
+  return { ...file, stored, upload: stored ? ('stored' as const) : ('metadata' as const) };
 }
 
 export function listDriveFiles(deps: AppDeps, tenant: TenantContext) {
@@ -53,17 +76,19 @@ export function listDriveFiles(deps: AppDeps, tenant: TenantContext) {
 export async function createDriveFile(
   deps: AppDeps,
   tenant: TenantContext,
-  input: { name: string; sizeBytes: number; contentType?: string },
+  input: { name: string; sizeBytes: number; contentType?: string; contentBase64?: string },
   meta: AuthMeta,
 ) {
   assertWritable(tenant.subscription, deps.now());
-  if (input.sizeBytes > driveUploadLimit(tenant.plan.tier)) {
+  const bytes = input.contentBase64 ? Buffer.from(input.contentBase64, 'base64') : null;
+  const sizeBytes = bytes ? bytes.byteLength : input.sizeBytes;
+  if (sizeBytes > driveUploadLimit(tenant.plan.tier)) {
     throw new ApiError('API-DRV-001', { limitBytes: driveUploadLimit(tenant.plan.tier) });
   }
   const used = deps.workspace
     .listFiles(tenant.org.id)
     .reduce((sum, file) => sum + file.sizeBytes, 0);
-  if (used + input.sizeBytes > driveStorageLimit(tenant.plan.tier)) {
+  if (used + sizeBytes > driveStorageLimit(tenant.plan.tier)) {
     throw new ApiError('API-QUOTA-001', { resource: 'drive' });
   }
   const file = {
@@ -72,9 +97,14 @@ export async function createDriveFile(
     ownerUserId: tenant.user.id,
     name: input.name,
     contentType: input.contentType ?? 'application/octet-stream',
-    sizeBytes: input.sizeBytes,
+    sizeBytes,
     createdAt: deps.now().toISOString(),
   };
+  if (bytes && bytes.byteLength > 0) {
+    const target = drivePath(file.organizationId, file.id);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, bytes);
+  }
   deps.workspace.addFile(file);
   await writeAudit(deps.store, {
     at: deps.now(),
@@ -141,7 +171,7 @@ export async function createDriveShare(
   };
 }
 
-export function readPublicShare(deps: AppDeps, token: string, password?: string) {
+export async function readPublicShare(deps: AppDeps, token: string, password?: string) {
   const share = deps.workspace.findShareByToken(token);
   if (!share) throw new ApiError('API-RES-404');
   if (share.expiresAt && Date.parse(share.expiresAt) <= deps.now().getTime()) {
@@ -163,13 +193,32 @@ export function readPublicShare(deps: AppDeps, token: string, password?: string)
     });
   }
   share.downloads += 1;
+  const bytes = share.viewOnly ? null : await readDriveBytes(file.organizationId, file.id);
   return {
     locked: false as const,
     name: file.name,
     contentType: file.contentType,
     sizeBytes: file.sizeBytes,
     viewOnly: share.viewOnly,
-    download: 'stub' as const,
+    download: bytes ? ('bytes' as const) : ('stub' as const),
+    contentBase64: bytes ? bytes.toString('base64') : null,
+  };
+}
+
+export async function readDriveDownload(deps: AppDeps, tenant: TenantContext, id: string) {
+  const file = deps.workspace.findFile(tenant.org.id, id);
+  if (!file) throw new ApiError('API-RES-404');
+  const bytes = await readDriveBytes(file.organizationId, file.id);
+  if (!bytes) throw new ApiError('API-RES-404');
+  return { name: file.name, contentType: file.contentType, bytes };
+}
+
+export async function readDriveContent(deps: AppDeps, tenant: TenantContext, id: string) {
+  const file = await readDriveDownload(deps, tenant, id);
+  return {
+    name: file.name,
+    contentType: file.contentType,
+    contentBase64: file.bytes.toString('base64'),
   };
 }
 
@@ -177,11 +226,7 @@ export function listDocs(deps: AppDeps, tenant: TenantContext) {
   assertTier(tenant, 'business', 'docs');
   return {
     docs: deps.workspace.listDocs(tenant.org.id),
-    collabora: {
-      adapter: 'wopi-stub' as const,
-      discoveryUrl: null,
-      note: 'Collabora Online is not installed. WOPI check and save are local stubs.',
-    },
+    collabora: collaboraStatus(),
     templates: DOC_TEMPLATES,
   };
 }
@@ -238,7 +283,7 @@ export function wopiCheck(deps: AppDeps, tenant: TenantContext, id: string) {
     Version: String(doc.version),
     SupportsUpdate: true,
     UserCanWrite: true,
-    adapter: 'wopi-stub' as const,
+    adapter: collaboraStatus().adapter,
   };
 }
 
@@ -270,6 +315,70 @@ export async function wopiSave(
   return { id: doc.id, version: doc.version, sizeBytes: doc.sizeBytes };
 }
 
+function collaboraStatus() {
+  const base = process.env.COLLABORA_URL?.replace(/\/$/, '') ?? '';
+  if (!base) {
+    return {
+      adapter: 'wopi-stub' as const,
+      discoveryUrl: null,
+      note: 'Collabora Online is not installed. WOPI check and save are local stubs.',
+    };
+  }
+  return {
+    adapter: 'wopi' as const,
+    discoveryUrl: `${base}/hosting/discovery`,
+    note: 'Collabora is running. Open the discovery URL from this API host.',
+  };
+}
+
+function browserLiveKitUrl(url: string): string {
+  const trimmed = url.trim().replace(/\/$/, '');
+  if (trimmed.startsWith('https://')) return `wss://${trimmed.slice('https://'.length)}`;
+  if (trimmed.startsWith('http://')) return `ws://${trimmed.slice('http://'.length)}`;
+  return trimmed;
+}
+
+function liveKitSession(roomId: string, identity: string, name: string) {
+  const url = browserLiveKitUrl(process.env.LIVEKIT_URL ?? '');
+  const apiKey = process.env.LIVEKIT_API_KEY ?? '';
+  const apiSecret = process.env.LIVEKIT_API_SECRET ?? '';
+  if (!url.startsWith('ws') || !apiKey || !apiSecret) {
+    return {
+      livekitUrl: 'wss://meet.rokeshcloud.com',
+      token: `stub.${roomId}`,
+      adapter: 'livekit-stub' as const,
+    };
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(
+    JSON.stringify({
+      iss: apiKey,
+      sub: identity,
+      name,
+      nbf: now - 10,
+      exp: now + 6 * 60 * 60,
+      video: {
+        room: roomId,
+        roomJoin: true,
+        roomCreate: true,
+        canPublish: true,
+        canSubscribe: true,
+        canPublishData: true,
+      },
+    }),
+  ).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', apiSecret)
+    .update(`${header}.${payload}`)
+    .digest('base64url');
+  return {
+    livekitUrl: url,
+    token: `${header}.${payload}.${signature}`,
+    adapter: 'livekit' as const,
+  };
+}
+
 function presentMeeting(
   tenant: TenantContext,
   room: { id: string; title: string; passcode: string | null; createdAt: string },
@@ -280,9 +389,7 @@ function presentMeeting(
     participantCap: limits.participants,
     maxMinutes: limits.minutes,
     recording: limits.recording,
-    livekitUrl: 'wss://meet.mrrokesh.mail',
-    token: `stub.${room.id}`,
-    adapter: 'livekit-stub' as const,
+    ...liveKitSession(room.id, tenant.user.id, tenant.user.fullName),
     features: {
       screenShare: true,
       chat: true,
@@ -434,6 +541,16 @@ export async function bookSlot(
     email: input.email,
   };
   deps.workspace.addAppointment(row);
+  const notice = `${input.name}, ${input.start} is reserved for ${page.title}.`;
+  await deps.mail.submitMessage({
+    organizationId: page.organizationId,
+    principalId: page.ownerUserId,
+    from: 'booking@rokeshcloud.com',
+    to: [input.email],
+    subject: `Booked: ${page.title}`,
+    text: notice,
+    sizeBytes: Buffer.byteLength(notice),
+  });
   await writeAudit(deps.store, {
     at: deps.now(),
     organizationId: page.organizationId,
@@ -449,7 +566,7 @@ export async function bookSlot(
     id: row.id,
     start: row.start,
     title: page.title,
-    meetLink: `https://meet.mrrokesh.mail/j/${page.slug}`,
+    meetLink: `https://meet.rokeshcloud.com/j/${page.slug}`,
     meet: 'stub' as const,
   };
 }

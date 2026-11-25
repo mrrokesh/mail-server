@@ -16,7 +16,7 @@ import type { ChatKind } from '../v1/workspace';
 
 export const CHAT_ENGINE = 'mrrokesh-chat' as const;
 
-const MASK_DOMAIN = 'mask.mrrokesh.mail';
+const MASK_DOMAIN = 'mask.rokeshcloud.com';
 const KEY_NOTE =
   'The server stores the client public key and the client-wrapped private key. It does not generate keys, unwrap the private key, or encrypt mail.';
 

@@ -4,6 +4,16 @@ All notable changes to MR Rokesh Mail are recorded here. The docs page "What's n
 
 ## [Unreleased]
 
+### Added
+
+- Local Compose services for LiveKit (`127.0.0.1:7880`) and Collabora (`127.0.0.1:9980`).
+- Stalwart JMAP provisioning from the API, with a local message mirror while the engine is in setup.
+- Redis fixed-window rate limits when `REDIS_URL` is set.
+- Drive file bytes on disk, and a content download route.
+- Postgres tables for documents, meetings, calendar events, contacts, AI usage, compliance, SSO, and SCIM.
+- Booking reservations queue a confirmation through the mail plane.
+- Mobile Calendar and Contacts lists against the API.
+
 ## [0.4.0] - 2026-11-26
 
 ### Added

@@ -2,9 +2,9 @@
 
 Last updated: 2026-11-26 · v0.3.0
 
-This runs PostgreSQL 16, Redis 7, and Stalwart Community on your machine. Stalwart is the official `stalwartlabs/stalwart:v1` image, unmodified, with no enterprise licence. Collabora and LiveKit are not part of this compose file.
+This runs PostgreSQL 16, Redis 7, Stalwart Community, LiveKit, and Collabora on your machine. Stalwart is the official `stalwartlabs/stalwart:v1` image, unmodified, with no enterprise licence.
 
-Drive, Docs, Meet, booking, tasks, notes, AI, compliance, and SSO records in v1 are kept in process memory on the API. They reset when the API process stops. Collabora and LiveKit are stub adapters until those servers are approved.
+Drive file bytes live under `DRIVE_DATA_DIR`. Documents, meetings, calendar events, contacts, AI usage, compliance, SSO, and SCIM follow the same Postgres flush as the other module tables when `CONTROL_STORE=postgres`. Set `LIVEKIT_URL` and `COLLABORA_URL` so Meet and Docs point at the local containers. Leave them unset and those screens stay on the stub adapters.
 
 ## Prerequisites
 
@@ -74,18 +74,20 @@ docker compose --env-file .env -f infra/docker-compose.yml up -d
 docker compose --env-file .env -f infra/docker-compose.yml ps
 ```
 
-| Service     | Address          | Notes                                                                                               |
-| ----------- | ---------------- | --------------------------------------------------------------------------------------------------- |
-| Postgres 16 | `127.0.0.1:5432` | Control-plane database `mrrokesh_mail`. A second database, `stalwart`, is created on first boot.    |
-| Redis 7     | `127.0.0.1:6379` | Password from `REDIS_PASSWORD`.                                                                     |
-| Stalwart    | `127.0.0.1:8080` | Setup wizard on first start. Mail ports 25, 465, 587, 993, 995, 4190, and 443 are also on loopback. |
+| Service     | Address          | Notes                                                                                                                                                        |
+| ----------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Postgres 16 | `127.0.0.1:5433` | Control-plane database `mrrokesh_mail`. Host port 5433 avoids a Postgres already listening on 5432. A second database, `stalwart`, is created on first boot. |
+| Redis 7     | `127.0.0.1:6379` | Password from `REDIS_PASSWORD`.                                                                                                                              |
+| Stalwart    | `127.0.0.1:8081` | Setup wizard on first start. Host port 8081 avoids Apache on 8080. Mail ports 25, 465, 587, 993, 995, 4190, and 443 are also on loopback.                    |
+| LiveKit     | `127.0.0.1:7880` | Dev mode. The API signs a join token when `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` are set.                                                |
+| Collabora   | `127.0.0.1:9980` | Discovery at `/hosting/discovery`. Set `COLLABORA_URL` so Docs stops using the stub adapter.                                                                 |
 
 Ports are bound to loopback so a laptop does not accept mail from the internet. A later deployment manifest publishes them on a server with a hostname and PTR.
 
 ### Stalwart first run
 
 1. `docker logs` for the `stalwart` service and copy the temporary admin password from the bootstrap block.
-2. Open `http://127.0.0.1:8080/admin` and finish the wizard. Set the hostname yourself. The container id is not a valid hostname.
+2. Open `http://127.0.0.1:8081/admin` and finish the wizard. Set the hostname yourself. The container id is not a valid hostname.
 3. For storage, choose PostgreSQL. Host `postgres`, database `stalwart`, user `stalwart`, password `STALWART_DB_PASSWORD`. The same shape is written in `infra/stalwart/datastore.stub.json`. Do not mount that stub over `/etc/stalwart`. An empty volume is what lets the wizard run.
 4. Restart the Stalwart service so it leaves bootstrap mode.
 

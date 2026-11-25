@@ -5,11 +5,12 @@ import { loadConfig } from './config';
 import type { DnsLookup } from './dns/lookup';
 import { LiveDns } from './dns/lookup';
 import { ApiError, BadJsonError } from './errors';
-import { MemoryRateLimiter } from './http/rate-limit';
+import { MemoryRateLimiter, type RateLimiter } from './http/rate-limit';
 import type { MailPlane } from './mail/plane';
 import { MockMailPlane } from './mail/mock-plane';
 import { registerApi } from './routes/register';
 import { registerV1 } from './routes/v1-modules';
+import { registerWopi } from './wopi/routes';
 import { registerV2 } from './routes/v2-modules';
 import type { ControlStore } from './store/types';
 import { MemoryStore } from './store/memory';
@@ -23,6 +24,7 @@ export interface BuildOptions {
   workspace?: WorkspaceStore;
   mail?: MailPlane;
   dns?: DnsLookup;
+  rates?: RateLimiter;
   now?: () => Date;
 }
 
@@ -35,7 +37,7 @@ export function buildServer(options?: BuildOptions) {
     mail: options?.mail ?? new MockMailPlane(),
     dns: options?.dns ?? new LiveDns(),
     challenges: new Map(),
-    rates: new MemoryRateLimiter(),
+    rates: options?.rates ?? new MemoryRateLimiter(),
     now: options?.now ?? (() => new Date()),
   };
 
@@ -61,6 +63,22 @@ export function buildServer(options?: BuildOptions) {
     },
   );
 
+  app.addContentTypeParser(
+    'application/octet-stream',
+    { parseAs: 'buffer' },
+    (_request, body, done) => {
+      done(null, body);
+    },
+  );
+
+  app.addContentTypeParser(
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    { parseAs: 'buffer' },
+    (_request, body, done) => {
+      done(null, body);
+    },
+  );
+
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (request, body, done) => {
     const raw = typeof body === 'string' ? body : body.toString('utf8');
     request.rawBody = raw;
@@ -73,6 +91,10 @@ export function buildServer(options?: BuildOptions) {
     } catch {
       done(new BadJsonError(), undefined);
     }
+  });
+
+  app.addContentTypeParser('*', { parseAs: 'buffer' }, (_request, body, done) => {
+    done(null, body);
   });
 
   app.addHook('onRequest', async (request, reply) => {
@@ -98,6 +120,7 @@ export function buildServer(options?: BuildOptions) {
 
   registerApi(app);
   registerV1(app);
+  registerWopi(app);
   registerV2(app);
 
   app.addHook('onResponse', async () => {

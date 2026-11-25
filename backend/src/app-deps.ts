@@ -1,6 +1,6 @@
 import type { AppConfig } from './config';
 import type { DnsLookup } from './dns/lookup';
-import type { MemoryRateLimiter } from './http/rate-limit';
+import type { RateLimiter } from './http/rate-limit';
 import type { MailPlane } from './mail/plane';
 import type { ControlStore } from './store/types';
 import type { WorkspaceStore } from './v1/workspace';
@@ -20,6 +20,6 @@ export interface AppDeps {
   mail: MailPlane;
   dns: DnsLookup;
   challenges: Map<string, WebAuthnChallenge>;
-  rates: MemoryRateLimiter;
+  rates: RateLimiter;
   now: () => Date;
 }

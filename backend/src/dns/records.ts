@@ -43,7 +43,7 @@ export function suggestedDnsRecords(
     {
       type: 'CNAME',
       host: `_mta-sts.${name}`,
-      value: 'mta-sts.mrrokesh.mail',
+      value: 'mta-sts.rokeshcloud.com',
       purpose: 'mta-sts',
     },
     {
@@ -55,13 +55,13 @@ export function suggestedDnsRecords(
     {
       type: 'CNAME',
       host: `autoconfig.${name}`,
-      value: 'autoconfig.mrrokesh.mail',
+      value: 'autoconfig.rokeshcloud.com',
       purpose: 'autoconfig',
     },
     {
       type: 'CNAME',
       host: `autodiscover.${name}`,
-      value: 'autodiscover.mrrokesh.mail',
+      value: 'autodiscover.rokeshcloud.com',
       purpose: 'autodiscover',
     },
   ];

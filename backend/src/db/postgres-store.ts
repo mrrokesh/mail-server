@@ -307,7 +307,7 @@ export class PostgresStore implements ControlStore {
           ${input.org.id}, ${input.org.name}, ${input.org.slug}, ${input.org.stalwartTenantId},
           ${input.org.dataResidencyRegion}, ${input.org.enforceMfa}, ${input.org.ssoEnabled},
           ${input.org.status}, ${input.org.sendingPaused}, ${input.org.gstin}, ${input.org.placeOfSupply},
-          ${input.org.createdAt}, ${input.org.updatedAt}
+          ${stamp(input.org.createdAt)}, ${stamp(input.org.updatedAt)}
         )
       `;
       await tx`select set_config('app.current_org_id', ${input.org.id}, true)`;
@@ -322,10 +322,10 @@ export class PostgresStore implements ControlStore {
           ${input.subscription.status}::subscription_status, ${input.subscription.cycle}::billing_cycle,
           ${input.subscription.currency}, ${input.subscription.seatLimit}, ${input.subscription.extraStorageGb},
           ${input.subscription.paymentGateway}, ${input.subscription.gatewayCustomerId},
-          ${input.subscription.gatewaySubId}, ${input.subscription.currentPeriodStart},
-          ${input.subscription.currentPeriodEnd}, ${input.subscription.paidAt},
-          ${JSON.stringify(input.subscription.limitOverrides)}::jsonb, ${input.subscription.createdAt},
-          ${input.subscription.updatedAt}
+          ${input.subscription.gatewaySubId}, ${stamp(input.subscription.currentPeriodStart)},
+          ${stamp(input.subscription.currentPeriodEnd)}, ${stamp(input.subscription.paidAt)},
+          ${JSON.stringify(input.subscription.limitOverrides)}::jsonb, ${stamp(input.subscription.createdAt)},
+          ${stamp(input.subscription.updatedAt)}
         )
       `;
       await insertAuditTx(tx as unknown as Sql, input.audit);
@@ -386,9 +386,9 @@ export class PostgresStore implements ControlStore {
         totp_secret_iv = ${next.totpSecretIv},
         mfa_enabled = ${next.mfaEnabled},
         is_active = ${next.isActive},
-        deleted_at = ${next.deletedAt},
-        last_login_at = ${next.lastLoginAt},
-        updated_at = ${next.updatedAt}
+        deleted_at = ${stamp(next.deletedAt)},
+        last_login_at = ${stamp(next.lastLoginAt)},
+        updated_at = ${stamp(next.updatedAt)}
       where id = ${userId}
     `,
     );
@@ -429,7 +429,7 @@ export class PostgresStore implements ControlStore {
       update organizations set
         name = ${next.name}, slug = ${next.slug}, enforce_mfa = ${next.enforceMfa},
         status = ${next.status}, sending_paused = ${next.sendingPaused},
-        gstin = ${next.gstin}, place_of_supply = ${next.placeOfSupply}, updated_at = ${next.updatedAt}
+        gstin = ${next.gstin}, place_of_supply = ${next.placeOfSupply}, updated_at = ${stamp(next.updatedAt)}
       where id = ${organizationId}
     `,
     );
@@ -462,11 +462,11 @@ export class PostgresStore implements ControlStore {
         seat_limit = ${next.seatLimit},
         gateway_customer_id = ${next.gatewayCustomerId},
         gateway_sub_id = ${next.gatewaySubId},
-        current_period_start = ${next.currentPeriodStart},
-        current_period_end = ${next.currentPeriodEnd},
-        paid_at = ${next.paidAt},
+        current_period_start = ${stamp(next.currentPeriodStart)},
+        current_period_end = ${stamp(next.currentPeriodEnd)},
+        paid_at = ${stamp(next.paidAt)},
         limit_overrides = ${JSON.stringify(next.limitOverrides)}::jsonb,
-        updated_at = ${next.updatedAt}
+        updated_at = ${stamp(next.updatedAt)}
       where organization_id = ${organizationId}
     `,
     );
@@ -482,8 +482,8 @@ export class PostgresStore implements ControlStore {
         ip_address, expires_at, revoked_at, created_at
       ) values (
         ${row.id}, ${row.userId}, ${row.organizationId}, ${row.tokenHash}, ${row.familyId},
-        ${row.deviceLabel}, ${row.platform}, ${row.ipAddress}, ${row.expiresAt}, ${row.revokedAt},
-        ${row.createdAt}
+        ${row.deviceLabel}, ${row.platform}, ${row.ipAddress}, ${stamp(row.expiresAt)}, ${stamp(row.revokedAt)},
+        ${stamp(row.createdAt)}
       )
     `,
     );
@@ -553,8 +553,8 @@ export class PostgresStore implements ControlStore {
       insert into password_reset_tokens (
         id, organization_id, user_id, token_hash, expires_at, used_at, created_at
       ) values (
-        ${row.id}, ${row.organizationId}, ${row.userId}, ${row.tokenHash}, ${row.expiresAt},
-        ${row.usedAt}, ${row.createdAt}
+        ${row.id}, ${row.organizationId}, ${row.userId}, ${row.tokenHash}, ${stamp(row.expiresAt)},
+        ${stamp(row.usedAt)}, ${stamp(row.createdAt)}
       )
     `,
     );
@@ -641,8 +641,8 @@ export class PostgresStore implements ControlStore {
             ${domain.id}, ${domain.organizationId}, ${domain.domainName}, ${domain.verificationTxt},
             ${domain.isVerified}, ${domain.mxVerified}, ${domain.spfVerified}, ${domain.dkimVerified},
             ${domain.dmarcVerified}, ${domain.mtaStsEnabled}, ${domain.daneEnabled},
-            ${domain.deliverabilityScore}, ${domain.catchAllMailboxId}, ${domain.lastDnsCheckedAt},
-            ${domain.createdAt}
+            ${domain.deliverabilityScore}, ${domain.catchAllMailboxId}, ${stamp(domain.lastDnsCheckedAt)},
+            ${stamp(domain.createdAt)}
           )
         `;
         await tx`
@@ -652,7 +652,7 @@ export class PostgresStore implements ControlStore {
           ) values (
             ${dkim.id}, ${dkim.domainId}, ${dkim.organizationId}, ${dkim.selector}, ${dkim.algorithm},
             ${dkim.publicKeyDns}, ${dkim.privateKeyEnc}, ${dkim.privateKeyIv}, ${dkim.isActive},
-            ${dkim.rotateAfter}, ${dkim.createdAt}
+            ${stamp(dkim.rotateAfter)}, ${stamp(dkim.createdAt)}
           )
         `;
       });
@@ -746,7 +746,7 @@ export class PostgresStore implements ControlStore {
         ) values (
           ${row.id}, ${row.organizationId}, ${row.domainId}, ${row.userId}, ${row.kind}::mailbox_kind,
           ${row.address}, ${row.stalwartPrincipalId}, ${row.quotaBytes}, ${row.usedBytes},
-          ${row.archiveAutoExpand}, ${row.createdAt}
+          ${row.archiveAutoExpand}, ${stamp(row.createdAt)}
         )
       `,
       );
@@ -989,7 +989,7 @@ export class PostgresStore implements ControlStore {
         id, organization_id, tier, cycle, seats, amount_paise, gstin, place_of_supply, status, created_at
       ) values (
         ${row.id}, ${row.organizationId}, ${row.tier}::plan_tier, ${row.cycle}::billing_cycle,
-        ${row.seats}, ${row.amountPaise}, ${row.gstin}, ${row.placeOfSupply}, ${row.status}, ${row.createdAt}
+        ${row.seats}, ${row.amountPaise}, ${row.gstin}, ${row.placeOfSupply}, ${row.status}, ${stamp(row.createdAt)}
       )
     `,
     );
@@ -1040,7 +1040,7 @@ export class PostgresStore implements ControlStore {
       ) values (
         ${row.id}, ${row.organizationId}, ${row.checkoutId}, ${row.invoiceNumber}, ${row.gstin},
         ${row.placeOfSupply}, ${row.taxablePaise}, ${row.cgstPaise}, ${row.sgstPaise}, ${row.igstPaise},
-        ${row.totalPaise}, ${row.sacCode}, ${row.createdAt}
+        ${row.totalPaise}, ${row.sacCode}, ${stamp(row.createdAt)}
       )
     `,
     );
@@ -1167,6 +1167,11 @@ function mapInvoice(row: Row): InvoiceRecord {
   };
 }
 
+function stamp(value: Date | string | null | undefined): string | null {
+  if (value == null) return null;
+  return value instanceof Date ? value.toISOString() : value;
+}
+
 async function insertUserTx(tx: Sql, user: UserRecord): Promise<unknown> {
   return tx`
     insert into users (
@@ -1176,8 +1181,8 @@ async function insertUserTx(tx: Sql, user: UserRecord): Promise<unknown> {
     ) values (
       ${user.id}, ${user.organizationId}, ${user.email}, ${user.fullName}, ${user.role}::org_role,
       ${user.passwordHash}, ${user.pepperVersion}, ${user.totpSecretEnc}, ${user.totpSecretIv},
-      ${user.mfaEnabled}, ${user.isActive}, ${user.deletedAt}, ${user.lastLoginAt},
-      ${user.createdAt}, ${user.updatedAt}
+      ${user.mfaEnabled}, ${user.isActive}, ${stamp(user.deletedAt)}, ${stamp(user.lastLoginAt)},
+      ${stamp(user.createdAt)}, ${stamp(user.updatedAt)}
     )
   `;
 }
@@ -1189,7 +1194,7 @@ async function insertAuditTx(tx: Sql, row: AuditRecord): Promise<unknown> {
       ip_address, metadata, created_at
     ) values (
       ${row.id}, ${row.organizationId}, ${row.actorUserId}, ${row.requestId}, ${row.action},
-      ${row.targetType}, ${row.targetId}, ${row.ipAddress}, ${JSON.stringify(row.metadata)}::jsonb, ${row.createdAt}
+      ${row.targetType}, ${row.targetId}, ${row.ipAddress}, ${JSON.stringify(row.metadata)}::jsonb, ${stamp(row.createdAt)}
     )
   `;
 }

@@ -1,9 +1,11 @@
 import crypto from 'node:crypto';
+import { encryptString } from '../crypto/aes';
+import { generateDkimKey } from '../crypto/dkim';
 import { quotaBytes, seatCap, withinCap } from '../billing/entitlements';
 import { hashPassword, newOpaqueToken, passwordPolicyError } from '../crypto/password';
 import { ApiError } from '../errors';
 import type { AppDeps } from '../app-deps';
-import type { MailboxRecord, OrgRole } from '../store/types';
+import type { MailboxRecord, OrgRecord, OrgRole, UserRecord } from '../store/types';
 import {
   PASSWORD_HELPERS,
   USER_MANAGERS,
@@ -385,6 +387,102 @@ export async function createAppPassword(
   };
   await deps.store.insertAppPassword(row);
   return { id: row.id, label, password, createdAt: now.toISOString() };
+}
+
+const DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
+/** Gives the signed-in person a mailbox on the domain in their address. */
+export async function ensurePrimaryMailbox(
+  deps: AppDeps,
+  user: UserRecord,
+  org: OrgRecord,
+  meta: AuthMeta,
+): Promise<void> {
+  const domainName = user.email.split('@')[1]?.toLowerCase() ?? '';
+  const localPart = user.email.split('@')[0]?.toLowerCase() ?? '';
+  if (!DOMAIN_RE.test(domainName) || !LOCAL_RE.test(localPart)) return;
+  let domain = (await deps.store.listDomains(org.id)).find((row) => row.domainName === domainName);
+  if (!domain) {
+    const taken = await deps.store.findDomainByName(domainName);
+    if (taken) return;
+    const now = deps.now();
+    const dkim = generateDkimKey(now);
+    const encrypted = encryptString(deps.config.dataEncryptionKey, dkim.privateKeyPem);
+    domain = {
+      id: crypto.randomUUID(),
+      organizationId: org.id,
+      domainName,
+      verificationTxt: crypto.randomBytes(18).toString('base64url'),
+      isVerified: false,
+      mxVerified: false,
+      spfVerified: false,
+      dkimVerified: false,
+      dmarcVerified: false,
+      mtaStsEnabled: false,
+      daneEnabled: false,
+      deliverabilityScore: 0,
+      catchAllMailboxId: null,
+      lastDnsCheckedAt: null,
+      createdAt: now,
+    };
+    const inserted = await deps.store.insertDomain(domain, {
+      id: crypto.randomUUID(),
+      domainId: domain.id,
+      organizationId: org.id,
+      selector: dkim.selector,
+      algorithm: 'rsa-2048',
+      publicKeyDns: dkim.publicKeyDns,
+      privateKeyEnc: encrypted.ciphertext,
+      privateKeyIv: encrypted.iv,
+      isActive: true,
+      rotateAfter: dkim.rotateAfter,
+      createdAt: now,
+    });
+    if (inserted === 'duplicate') return;
+    await deps.mail.ensureTenant({
+      organizationId: org.id,
+      stalwartTenantId: org.stalwartTenantId,
+      name: domainName,
+    });
+  }
+  const existing = (await deps.store.listMailboxes(org.id)).find(
+    (row) => row.userId === user.id && row.kind === 'user',
+  );
+  if (existing) return;
+  const now = deps.now();
+  const mailbox: MailboxRecord = {
+    id: crypto.randomUUID(),
+    organizationId: org.id,
+    domainId: domain.id,
+    userId: user.id,
+    kind: 'user',
+    address: `${localPart}@${domainName}`,
+    stalwartPrincipalId: `pr_${crypto.randomUUID()}`,
+    quotaBytes: 15 * 1024 * 1024 * 1024,
+    usedBytes: 0,
+    archiveAutoExpand: false,
+    createdAt: now,
+  };
+  const saved = await deps.store.insertMailbox(mailbox);
+  if (saved === 'duplicate') return;
+  await deps.mail.ensurePrincipal({
+    organizationId: org.id,
+    stalwartTenantId: org.stalwartTenantId,
+    principalId: mailbox.stalwartPrincipalId,
+    address: mailbox.address,
+    kind: mailbox.kind,
+  });
+  await writeAudit(deps.store, {
+    at: now,
+    organizationId: org.id,
+    actorUserId: user.id,
+    requestId: meta.requestId,
+    action: 'mailbox.created',
+    targetType: 'mailbox',
+    targetId: mailbox.id,
+    ipAddress: meta.ip,
+    metadata: { address: mailbox.address },
+  });
 }
 
 export async function listAppPasswords(deps: AppDeps, tenant: TenantContext, mailboxId: string) {

@@ -1,4 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { signAccess } from '../crypto/jwt';
+import { ApiError } from '../errors';
+import { collaboraFrameUrl } from '../wopi/discovery';
 import { z } from 'zod';
 import { asUuid, loadTenant, parseBody } from '../services/access';
 import type { AuthMeta } from '../services/auth';
@@ -34,6 +37,8 @@ import {
   patchTask,
   plansForWeb,
   publicBooking,
+  readDriveContent,
+  readDriveDownload,
   readPublicShare,
   saveSso,
   scimCreateUser,
@@ -86,11 +91,30 @@ export function registerV1(app: FastifyInstance): void {
         name: z.string().trim().min(1).max(180),
         sizeBytes: z.number().int().positive(),
         contentType: z.string().trim().max(120).optional(),
+        contentBase64: z.string().max(20_000_000).optional(),
       }),
       request.body,
     );
     const created = await createDriveFile(app.deps, tenant, body, meta(request));
     return reply.code(201).send(created);
+  });
+
+  app.get('/api/v1/drive/files/:id/content', async (request, reply) => {
+    const tenant = await loadTenant(request, 'session');
+    const params = parseBody(z.object({ id: z.string().uuid() }), request.params);
+    const query = parseBody(z.object({ download: z.literal('1').optional() }), request.query);
+    if (query.download === '1') {
+      const file = await readDriveDownload(app.deps, tenant, params.id);
+      const ascii = file.name.replace(/[^\x20-\x7E]/g, '_').replace(/["\\]/g, '') || 'download';
+      return reply
+        .type(file.contentType || 'application/octet-stream')
+        .header(
+          'content-disposition',
+          `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+        )
+        .send(file.bytes);
+    }
+    return readDriveContent(app.deps, tenant, params.id);
   });
 
   app.post('/api/v1/drive/files/:id/shares', async (request, reply) => {
@@ -133,6 +157,47 @@ export function registerV1(app: FastifyInstance): void {
     );
     const created = await createDoc(app.deps, tenant, body, meta(request));
     return reply.code(201).send(created);
+  });
+
+  app.get('/api/v1/docs/:id/editor', async (request) => {
+    const tenant = await loadTenant(request, 'session');
+    const params = parseBody(z.object({ id: z.string().uuid() }), request.params);
+    const doc = app.deps.workspace.findDoc(tenant.org.id, params.id);
+    if (!doc) throw new ApiError('API-RES-404');
+    const collabora = process.env.COLLABORA_URL?.replace(/\/$/, '') ?? '';
+    if (!collabora) throw new ApiError('API-SRV-503');
+    const wopiBase = (process.env.WOPI_BASE_URL ?? 'http://host.docker.internal:4000').replace(
+      /\/$/,
+      '',
+    );
+    const editorTtlSec = 8 * 60 * 60;
+    const token = signAccess(
+      {
+        sub: tenant.user.id,
+        org: tenant.org.id,
+        role: tenant.user.role,
+        email: tenant.user.email,
+        scope: 'session',
+      },
+      app.deps.config.jwtSecret,
+      editorTtlSec,
+      app.deps.now(),
+    );
+    const src = `${wopiBase}/api/v1/wopi/files/${doc.id}`;
+    const ttl = app.deps.now().getTime() + editorTtlSec * 1000;
+    let frameUrl: string;
+    try {
+      frameUrl = await collaboraFrameUrl({
+        collaboraUrl: collabora,
+        wopiSrc: src,
+        accessToken: token,
+        accessTokenTtl: ttl,
+        extension: 'docx',
+      });
+    } catch {
+      throw new ApiError('API-SRV-503');
+    }
+    return { frameUrl, name: doc.name };
   });
 
   app.get('/api/v1/docs/:id/wopi', async (request) => {

@@ -11,7 +11,7 @@ import type { AccessClaims } from '../crypto/jwt';
 import { verifyAccess } from '../crypto/jwt';
 import { ApiError } from '../errors';
 import type { RateLimitRule } from '../config';
-import type { MemoryRateLimiter } from '../http/rate-limit';
+import type { RateLimiter } from '../http/rate-limit';
 import type {
   AuditRecord,
   ControlStore,
@@ -44,14 +44,14 @@ export function parseBody<T>(schema: ZodType<T>, body: unknown): T {
   return result.data;
 }
 
-export function enforceRate(
-  limiter: MemoryRateLimiter,
+export async function enforceRate(
+  limiter: RateLimiter,
   key: string,
   rule: RateLimitRule,
   now: Date,
   reply: FastifyReply,
-): void {
-  const result = limiter.hit(key, rule, now.getTime());
+): Promise<void> {
+  const result = await limiter.hit(key, rule, now.getTime());
   if (!result.allowed) {
     reply.header('retry-after', String(result.retryAfterSec));
     throw new ApiError('API-RATE-429', { retryAfterSec: result.retryAfterSec });
@@ -268,6 +268,7 @@ export function presentMailbox(mailbox: MailboxRecord) {
 export function presentInvoice(invoice: InvoiceRecord) {
   return {
     id: invoice.id,
+    checkoutId: invoice.checkoutId,
     invoiceNumber: invoice.invoiceNumber,
     gstin: invoice.gstin,
     placeOfSupply: invoice.placeOfSupply,

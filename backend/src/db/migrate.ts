@@ -17,7 +17,12 @@ await sql`
   )
 `;
 
-const files = ['0001_initial_schema.sql', '0002_v2_modules.sql'];
+const files = [
+  '0001_initial_schema.sql',
+  '0002_v2_modules.sql',
+  '0003_workspace_modules.sql',
+  '0004_stored_mail.sql',
+];
 for (const name of files) {
   const seen = await sql`select id from schema_migrations where id = ${name}`;
   if (seen.length > 0) {

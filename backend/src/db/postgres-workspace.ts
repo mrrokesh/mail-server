@@ -125,6 +125,20 @@ export class PostgresWorkspace extends WorkspaceStore {
       const campaigns = await tx`select * from campaigns where organization_id = ${organizationId}`;
       const suppressions =
         await tx`select * from campaign_suppressions where organization_id = ${organizationId}`;
+      const docs = await tx`select * from documents where organization_id = ${organizationId}`;
+      const meetings =
+        await tx`select * from meeting_rooms where organization_id = ${organizationId}`;
+      const events =
+        await tx`select * from calendar_events where organization_id = ${organizationId}`;
+      const contacts = await tx`select * from contacts where organization_id = ${organizationId}`;
+      const ai = await tx`select * from ai_usage where organization_id = ${organizationId}`;
+      const compliance =
+        await tx`select * from compliance_settings where organization_id = ${organizationId}`;
+      const sso = await tx`select * from sso_configs where organization_id = ${organizationId}`;
+      const scimTokens =
+        await tx`select * from scim_tokens where organization_id = ${organizationId}`;
+      const scimUsers =
+        await tx`select * from scim_users where organization_id = ${organizationId}`;
       const memberIds = new Map<string, string[]>();
       for (const item of members) {
         const row = asRow(item);
@@ -160,6 +174,15 @@ export class PostgresWorkspace extends WorkspaceStore {
         brand: brandRow ? mapBrand(brandRow) : null,
         campaigns: campaigns.map((item) => mapCampaign(asRow(item))),
         suppressions: suppressions.map((item) => mapSuppression(asRow(item))),
+        docs: docs.map((item) => mapDoc(asRow(item))),
+        meetings: meetings.map((item) => mapMeeting(asRow(item))),
+        events: events.map((item) => mapEvent(asRow(item))),
+        contacts: contacts.map((item) => mapContact(asRow(item))),
+        ai: mapAi(asRow(ai[0])),
+        compliance: mapCompliance(asRow(compliance[0])),
+        sso: mapSso(asRow(sso[0])),
+        scimTokens: scimTokens.map((item) => mapScimToken(asRow(item))),
+        scimUsers: scimUsers.map((item) => mapScimUser(asRow(item))),
       };
     });
   }
@@ -188,6 +211,15 @@ export class PostgresWorkspace extends WorkspaceStore {
       await tx`delete from partner_brands where organization_id = ${organizationId}`;
       await tx`delete from campaign_suppressions where organization_id = ${organizationId}`;
       await tx`delete from campaigns where organization_id = ${organizationId}`;
+      await tx`delete from documents where organization_id = ${organizationId}`;
+      await tx`delete from meeting_rooms where organization_id = ${organizationId}`;
+      await tx`delete from calendar_events where organization_id = ${organizationId}`;
+      await tx`delete from contacts where organization_id = ${organizationId}`;
+      await tx`delete from ai_usage where organization_id = ${organizationId}`;
+      await tx`delete from compliance_settings where organization_id = ${organizationId}`;
+      await tx`delete from sso_configs where organization_id = ${organizationId}`;
+      await tx`delete from scim_tokens where organization_id = ${organizationId}`;
+      await tx`delete from scim_users where organization_id = ${organizationId}`;
 
       for (const file of snap.files) {
         await tx`
@@ -363,6 +395,87 @@ export class PostgresWorkspace extends WorkspaceStore {
           )
         `;
       }
+      for (const doc of snap.docs) {
+        await tx`
+          insert into documents (
+            id, organization_id, owner_user_id, name, kind, template, version, size_bytes, updated_at
+          ) values (
+            ${doc.id}, ${doc.organizationId}, ${doc.ownerUserId}, ${doc.name}, ${doc.kind},
+            ${doc.template}, ${doc.version}, ${doc.sizeBytes}, ${doc.updatedAt}
+          )
+        `;
+      }
+      for (const room of snap.meetings) {
+        await tx`
+          insert into meeting_rooms (id, organization_id, host_user_id, title, passcode, created_at)
+          values (
+            ${room.id}, ${room.organizationId}, ${room.hostUserId}, ${room.title},
+            ${room.passcode}, ${room.createdAt}
+          )
+        `;
+      }
+      for (const event of snap.events) {
+        await tx`
+          insert into calendar_events (
+            id, organization_id, calendar, title, event_date, start_at, end_at, location
+          ) values (
+            ${event.id}, ${event.organizationId}, ${event.calendar}, ${event.title}, ${event.date},
+            ${event.start}, ${event.end}, ${event.location}
+          )
+        `;
+      }
+      for (const contact of snap.contacts) {
+        await tx`
+          insert into contacts (
+            id, organization_id, book, name, email, phone, role, notes
+          ) values (
+            ${contact.id}, ${contact.organizationId}, ${contact.book}, ${contact.name},
+            ${contact.email}, ${contact.phone}, ${contact.role}, ${contact.notes}
+          )
+        `;
+      }
+      if (snap.ai) {
+        await tx`
+          insert into ai_usage (organization_id, enabled, usage_day, used)
+          values (${organizationId}, ${snap.ai.enabled}, ${snap.ai.day}, ${snap.ai.used})
+        `;
+      }
+      if (snap.compliance) {
+        await tx`
+          insert into compliance_settings (
+            organization_id, archive_enabled, retention_days, cases_json, holds_json, journals_json
+          ) values (
+            ${organizationId}, ${snap.compliance.archiveEnabled}, ${snap.compliance.retentionDays},
+            ${JSON.stringify(snap.compliance.cases)}, ${JSON.stringify(snap.compliance.holds)},
+            ${JSON.stringify(snap.compliance.journals)}
+          )
+        `;
+      }
+      if (snap.sso) {
+        await tx`
+          insert into sso_configs (organization_id, protocol, issuer, metadata_enc, metadata_iv)
+          values (
+            ${organizationId}, ${snap.sso.protocol}, ${snap.sso.issuer},
+            ${snap.sso.metadataEnc}, ${snap.sso.metadataIv}
+          )
+        `;
+      }
+      for (const token of snap.scimTokens) {
+        await tx`
+          insert into scim_tokens (id, organization_id, token_hash, label, created_at)
+          values (
+            ${token.id}, ${token.organizationId}, ${token.tokenHash}, ${token.label}, ${token.createdAt}
+          )
+        `;
+      }
+      for (const user of snap.scimUsers) {
+        await tx`
+          insert into scim_users (id, organization_id, user_name, display_name, active)
+          values (
+            ${user.id}, ${user.organizationId}, ${user.userName}, ${user.displayName}, ${user.active}
+          )
+        `;
+      }
     });
   }
 }
@@ -372,6 +485,136 @@ export function createPostgresWorkspace(url: string): PostgresWorkspace {
     throw new Error('APP_DATABASE_URL or DATABASE_URL is required when CONTROL_STORE=postgres');
   }
   return new PostgresWorkspace(postgres(url, { max: 4 }));
+}
+
+function mapDoc(row: Row | null) {
+  if (!row) throw new Error('document');
+  const kind = text(row, 'kind');
+  if (kind !== 'document' && kind !== 'spreadsheet' && kind !== 'presentation') {
+    throw new Error('document kind');
+  }
+  return {
+    id: text(row, 'id'),
+    organizationId: text(row, 'organization_id'),
+    ownerUserId: text(row, 'owner_user_id'),
+    name: text(row, 'name'),
+    kind: kind as 'document' | 'spreadsheet' | 'presentation',
+    template: textOrNull(row, 'template'),
+    version: num(row, 'version'),
+    sizeBytes: num(row, 'size_bytes'),
+    updatedAt: iso(row, 'updated_at'),
+  };
+}
+
+function mapMeeting(row: Row | null) {
+  if (!row) throw new Error('meeting');
+  return {
+    id: text(row, 'id'),
+    organizationId: text(row, 'organization_id'),
+    hostUserId: text(row, 'host_user_id'),
+    title: text(row, 'title'),
+    passcode: textOrNull(row, 'passcode'),
+    createdAt: iso(row, 'created_at'),
+  };
+}
+
+function mapEvent(row: Row | null) {
+  if (!row) throw new Error('event');
+  const calendar = text(row, 'calendar');
+  if (calendar !== 'personal' && calendar !== 'work' && calendar !== 'holidays') {
+    throw new Error('calendar');
+  }
+  return {
+    id: text(row, 'id'),
+    organizationId: text(row, 'organization_id'),
+    calendar: calendar as 'personal' | 'work' | 'holidays',
+    title: text(row, 'title'),
+    date: iso(row, 'event_date').slice(0, 10),
+    start: textOrNull(row, 'start_at'),
+    end: textOrNull(row, 'end_at'),
+    location: text(row, 'location'),
+  };
+}
+
+function mapContact(row: Row | null) {
+  if (!row) throw new Error('contact');
+  return {
+    id: text(row, 'id'),
+    organizationId: text(row, 'organization_id'),
+    book: 'personal' as const,
+    name: text(row, 'name'),
+    email: text(row, 'email'),
+    phone: text(row, 'phone'),
+    role: text(row, 'role'),
+    notes: text(row, 'notes'),
+  };
+}
+
+function mapAi(row: Row | null) {
+  if (!row) return null;
+  return {
+    enabled: flag(row, 'enabled'),
+    day: iso(row, 'usage_day').slice(0, 10),
+    used: num(row, 'used'),
+  };
+}
+
+function jsonList<T>(row: Row, column: string): T[] {
+  const raw = row[column];
+  if (typeof raw !== 'string' || raw.length === 0) return [];
+  const parsed = JSON.parse(raw) as unknown;
+  return Array.isArray(parsed) ? (parsed as T[]) : [];
+}
+
+function mapCompliance(row: Row | null) {
+  if (!row) return null;
+  return {
+    archiveEnabled: flag(row, 'archive_enabled'),
+    retentionDays: num(row, 'retention_days'),
+    cases: jsonList<{ id: string; query: string; status: 'stub'; createdAt: string }>(
+      row,
+      'cases_json',
+    ),
+    holds: jsonList<{ id: string; matter: string; createdAt: string }>(row, 'holds_json'),
+    journals: jsonList<{ id: string; destination: string; enabled: boolean; createdAt: string }>(
+      row,
+      'journals_json',
+    ),
+  };
+}
+
+function mapSso(row: Row | null) {
+  if (!row) return null;
+  const protocol = text(row, 'protocol');
+  if (protocol !== 'saml' && protocol !== 'oidc') throw new Error('sso');
+  return {
+    protocol: protocol as 'saml' | 'oidc',
+    issuer: text(row, 'issuer'),
+    metadataEnc: text(row, 'metadata_enc'),
+    metadataIv: text(row, 'metadata_iv'),
+  };
+}
+
+function mapScimToken(row: Row | null) {
+  if (!row) throw new Error('scim token');
+  return {
+    id: text(row, 'id'),
+    organizationId: text(row, 'organization_id'),
+    tokenHash: text(row, 'token_hash'),
+    label: text(row, 'label'),
+    createdAt: iso(row, 'created_at'),
+  };
+}
+
+function mapScimUser(row: Row | null) {
+  if (!row) throw new Error('scim user');
+  return {
+    id: text(row, 'id'),
+    organizationId: text(row, 'organization_id'),
+    userName: text(row, 'user_name'),
+    displayName: text(row, 'display_name'),
+    active: flag(row, 'active'),
+  };
 }
 
 function asRow(value: unknown): Row | null {

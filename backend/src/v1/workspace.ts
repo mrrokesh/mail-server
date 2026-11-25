@@ -290,6 +290,15 @@ export interface ModuleSnapshot {
   brand: PartnerBrand | null;
   campaigns: CampaignRecord[];
   suppressions: CampaignSuppression[];
+  docs: DocRecord[];
+  meetings: MeetingRoom[];
+  events: CalEvent[];
+  contacts: ContactItem[];
+  ai: AiState | null;
+  compliance: ComplianceState | null;
+  sso: SsoState | null;
+  scimTokens: ScimToken[];
+  scimUsers: ScimUser[];
 }
 
 function blankCompliance(): ComplianceState {
@@ -297,9 +306,7 @@ function blankCompliance(): ComplianceState {
 }
 
 /**
- * In-memory module adapter. PostgresWorkspace hydrates and flushes drive, tasks,
- * notes, booking, and the v2 tables. Docs, Meet, calendar events, contacts, AI,
- * compliance, and SSO stay in this process.
+ * In-memory module adapter. PostgresWorkspace hydrates and flushes the same rows.
  */
 export class WorkspaceStore {
   readonly persistence: 'memory' | 'postgres' = 'memory';
@@ -701,6 +708,15 @@ export class WorkspaceStore {
       brand: this.brands.get(organizationId) ?? null,
       campaigns: this.campaigns.filter((row) => row.organizationId === organizationId),
       suppressions: this.suppressions.filter((row) => row.organizationId === organizationId),
+      docs: this.docs.filter((row) => row.organizationId === organizationId),
+      meetings: this.meetings.filter((row) => row.organizationId === organizationId),
+      events: this.events.filter((row) => row.organizationId === organizationId),
+      contacts: this.contacts.filter((row) => row.organizationId === organizationId),
+      ai: this.ai.get(organizationId) ?? null,
+      compliance: this.compliance.get(organizationId) ?? null,
+      sso: this.sso.get(organizationId) ?? null,
+      scimTokens: this.scimTokens.filter((row) => row.organizationId === organizationId),
+      scimUsers: this.scimUsers.filter((row) => row.organizationId === organizationId),
     };
   }
 
@@ -720,6 +736,18 @@ export class WorkspaceStore {
     swap(this.simulations, organizationId, snap.simulations);
     swap(this.campaigns, organizationId, snap.campaigns);
     swap(this.suppressions, organizationId, snap.suppressions);
+    swap(this.docs, organizationId, snap.docs);
+    swap(this.meetings, organizationId, snap.meetings);
+    swap(this.events, organizationId, snap.events);
+    swap(this.contacts, organizationId, snap.contacts);
+    swap(this.scimTokens, organizationId, snap.scimTokens);
+    swap(this.scimUsers, organizationId, snap.scimUsers);
+    if (snap.ai) this.ai.set(organizationId, snap.ai);
+    else this.ai.delete(organizationId);
+    if (snap.compliance) this.compliance.set(organizationId, snap.compliance);
+    else this.compliance.delete(organizationId);
+    if (snap.sso) this.sso.set(organizationId, snap.sso);
+    else this.sso.delete(organizationId);
     if (snap.privacy) this.privacySettings.set(organizationId, snap.privacy);
     else this.privacySettings.delete(organizationId);
     if (snap.enterprise) this.enterpriseSettings.set(organizationId, snap.enterprise);
