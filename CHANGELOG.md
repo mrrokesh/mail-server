@@ -4,6 +4,19 @@ All notable changes to MR Rokesh Mail are recorded here. The docs page "What's n
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-26
+
+### Added
+
+- Drive upload metadata, file list, and share-link stubs, plus Drive, Docs, Meet, booking, tasks, notes, and AI screens.
+- Docs WOPI check and save stubs, and a LiveKit meeting shell that does not start a media server.
+- Public booking pages with slot reservation (`API-CAL-001` when a slot is taken).
+- AI writing and summaries with a daily cap (`API-QUOTA-006`) and an admin off switch.
+- Business Plus hooks for archive, retention, eDiscovery, legal hold, and journaling.
+- Encrypted SAML/OIDC settings and a SCIM 2.0 user skeleton. ActiveSync and EWS stay on Stalwart; the API only records the plan flag.
+- Web list shapes for calendar, contacts, domains, users, and `/api/v1/plans`.
+- Sign-in accepts `totpCode`, or returns a challenge that `POST /api/v1/auth/mfa/verify` completes.
+
 ## [0.2.0] - 2026-11-26
 
 ### Added

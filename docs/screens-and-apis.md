@@ -1,6 +1,6 @@
 # Screens and APIs
 
-Last updated: 2026-11-26 · v0.2.0
+Last updated: 2026-11-26 · v0.3.0
 
 This is the MVP inventory. Paths under `/api/v1` are the control plane. The web app prefixes its calls with `/api/v1`. Full request bodies are in `backend/openapi.yaml`.
 
@@ -18,34 +18,45 @@ This is the MVP inventory. Paths under `/api/v1` are the control plane. The web 
 | `/mail`                    | Three-pane mail                |
 | `/calendar`                | Calendar                       |
 | `/contacts`                | Contacts                       |
+| `/drive`                   | Drive files and share links    |
+| `/documents`               | Docs list (WOPI stub)          |
+| `/meet`                    | Meeting shell                  |
+| `/booking`                 | Booking pages                  |
+| `/book/:slug`              | Public booking page            |
+| `/tasks`                   | Tasks                          |
+| `/notes`                   | Notes                          |
+| `/ai`                      | AI writing and summaries       |
 | `/admin/domains`           | Domain list                    |
 | `/admin/domains/:domainId` | DNS wizard                     |
 | `/admin/users`             | Users                          |
+| `/admin/compliance`        | Archive, retention, discovery  |
+| `/admin/sso`               | SSO and SCIM tokens            |
 
 `/admin` redirects to `/admin/domains`. Unknown marketing paths render the not-found page.
 
 ## Mobile screens
 
-| Route                    | Screen                                     |
-| ------------------------ | ------------------------------------------ |
-| `(auth)/sign-in`         | Sign in                                    |
-| `(auth)/sign-up`         | Create an account                          |
-| `(auth)/forgot-password` | Password reset request                     |
-| `(auth)/two-factor`      | TOTP prompt                                |
-| `(tabs)/mail`            | Inbox, sent, drafts, archive               |
-| `(tabs)/mail/compose`    | Compose                                    |
-| `(tabs)/mail/[id]`       | Message                                    |
-| `(tabs)/calendar`        | Placeholder                                |
-| `(tabs)/contacts`        | Placeholder                                |
-| `(tabs)/drive`           | Placeholder. Drive is not in this version. |
-| `(tabs)/more`            | Account and sign out                       |
+| Route                    | Screen                              |
+| ------------------------ | ----------------------------------- |
+| `(auth)/sign-in`         | Sign in                             |
+| `(auth)/sign-up`         | Create an account                   |
+| `(auth)/forgot-password` | Password reset request              |
+| `(auth)/two-factor`      | TOTP prompt                         |
+| `(tabs)/mail`            | Inbox, sent, drafts, archive        |
+| `(tabs)/mail/compose`    | Compose                             |
+| `(tabs)/mail/[id]`       | Message                             |
+| `(tabs)/calendar`        | Placeholder                         |
+| `(tabs)/contacts`        | Placeholder                         |
+| `(tabs)/drive`           | File list when signed in to the API |
+| `(tabs)/more`            | Account and sign out                |
 
 ## Auth
 
 | Method and path                                   | Also called as                                                                  | Notes                                                                                                                                                                                                                                                                  |
 | ------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `POST /api/v1/auth/signup`                        | `POST /api/v1/auth/sign-up`                                                     | Same handler. Shorthand body is `name`, `email`, `password`, optional `organization` and `plan`. `plan: business` starts the Business trial. Response keeps `session` and repeats the token pair at the top level. `user` includes `name`, `organization`, and `plan`. |
-| `POST /api/v1/auth/login`                         | `POST /api/v1/auth/sign-in`                                                     | Same handler. Web and mobile call `sign-in`.                                                                                                                                                                                                                           |
+| `POST /api/v1/auth/login`                         | `POST /api/v1/auth/sign-in`                                                     | Same handler. Optional `totpCode` completes MFA. Without it, MFA returns `{ mfaRequired: true, challengeToken }` and no session.                                                                                                                                       |
+| `POST /api/v1/auth/mfa/verify`                    |                                                                                 | Body is `challengeToken` plus `code` or `totpCode`. Returns the same session as login.                                                                                                                                                                                 |
 | `POST /api/v1/auth/refresh`                       |                                                                                 | Body or `mr_refresh` cookie.                                                                                                                                                                                                                                           |
 | `POST /api/v1/auth/logout`                        | `POST /api/v1/auth/sign-out`                                                    | Send `refreshToken` to revoke that session.                                                                                                                                                                                                                            |
 | `POST /api/v1/auth/password`                      |                                                                                 | Signed-in password change.                                                                                                                                                                                                                                             |
@@ -111,15 +122,38 @@ This is the MVP inventory. Paths under `/api/v1` are the control plane. The web 
 
 The mock mail plane files a message as `sent` when `from` is the caller's mailbox or alias, and as `inbox` otherwise. Drafts, archive, and spam stay empty until a real mailbox store tracks folders.
 
+## v1 modules
+
+These routes are served. Drive, Docs, Meet, booking, tasks, notes, AI, compliance, and SSO data is process memory.
+
+| Method and path                                                                               | Notes                                                                                                   |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/plans`                                                                           | Web pricing shape. `GET /api/v1/billing/plans` remains the control-plane catalog.                       |
+| `GET`, `POST /api/v1/drive/files`                                                             | Metadata only. Upload size uses `API-DRV-001`. Storage uses `API-QUOTA-001`.                            |
+| `POST /api/v1/drive/files/:id/shares`                                                         | Starter and above. Password is stored as a hash.                                                        |
+| `GET /api/v1/public/drive/:token`                                                             | Public. Locked until `password` matches.                                                                |
+| `GET`, `POST /api/v1/docs`                                                                    | Business and above. Includes GST, quotation, letterhead, and offer-letter template ids.                 |
+| `GET`, `POST /api/v1/docs/:id/wopi`                                                           | CheckFileInfo and a save that bumps the version.                                                        |
+| `GET`, `POST /api/v1/meet/rooms`                                                              | Starter and above. `adapter` is `livekit-stub`.                                                         |
+| `GET`, `POST /api/v1/booking/pages`                                                           | Starter has one page. Business and above are uncapped in this stub.                                     |
+| `GET`, `POST /api/v1/public/booking/:slug`                                                    | Public. A taken slot is `API-CAL-001`.                                                                  |
+| `GET`, `POST /api/v1/tasks`, `PATCH /api/v1/tasks/:id`                                        |                                                                                                         |
+| `GET`, `POST /api/v1/notes`, `PATCH /api/v1/notes/:id`                                        |                                                                                                         |
+| `GET /api/v1/ai/status`, `PUT /api/v1/admin/ai`                                               | Owner or security admin can disable AI.                                                                 |
+| `POST /api/v1/ai/write`, `POST /api/v1/ai/summarize`                                          | Starter and above. Over the daily cap is `API-QUOTA-006`. Disabled is `API-AUTH-003`.                   |
+| `GET /api/v1/compliance` and the archive, retention, ediscovery, holds, and journaling writes | Business Plus. Owner or compliance admin.                                                               |
+| `GET`, `PUT /api/v1/admin/sso`                                                                | Metadata is encrypted. The read model never returns it.                                                 |
+| `GET`, `POST /api/v1/admin/scim/tokens`                                                       | The token is returned once.                                                                             |
+| `GET /api/v1/scim/v2/ServiceProviderConfig`                                                   |                                                                                                         |
+| `GET`, `POST /api/v1/scim/v2/Users`                                                           | Bearer is the SCIM token. Users are not mailboxes.                                                      |
+| `GET /api/v1/mail/protocols`                                                                  | Adds `activesync`, `ews`, and `activesyncNote`. Query `protocol=activesync` or `ews` requires Business. |
+| `GET`, `POST /api/v1/calendar/events`                                                         | Web event shape, wrapped as `{ events }`.                                                               |
+| `GET`, `POST /api/v1/contacts`                                                                | Directory rows come from users. Personal rows are stored.                                               |
+
+Domain list and create responses include `name` and `checks` for the wizard, and still include `domainName` plus `domain` and `records` on create. User responses include `name` and `status` beside `fullName` and `isActive`. An invite without a password returns `temporaryPassword` once.
+
 ## Still unmatched
 
-These clients call paths the control plane does not serve yet. The web falls back to preview data when the body does not match.
-
-- Web calendar calls `GET` and `POST /api/v1/calendar/events`.
-- Web contacts call `GET /api/v1/contacts`.
-- Web domains and the DNS wizard expect `{ name, checks }`. The API returns `domainName` and DNS from `GET /api/v1/domains/:id/dns`.
-- Web users expect `name` and `status`. The API returns `fullName` and `isActive`.
-- Web pricing calls `GET /api/v1/plans`. The catalog is `GET /api/v1/billing/plans`.
-- Mobile two-factor calls `POST /api/v1/auth/mfa/verify` with `challengeToken`. Sign-in still answers `API-SEC-001` and expects `totpCode` on the next login.
 - Signup accepts Free, or Business as a trial. Starter, Business Plus, and Enterprise are not self-serve.
 - Web sign-out clears the browser token and does not call `POST /api/v1/auth/logout`.
+- v1 module rows above are not in Postgres. Restarting the API clears them.

@@ -1,7 +1,7 @@
 {
   "name": "mrrokesh-mail",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "MR Rokesh Mail — custom-domain business email and productivity suite.",
   "packageManager": "pnpm@10.18.3",

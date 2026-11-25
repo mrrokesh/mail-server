@@ -1,8 +1,10 @@
 # Local development
 
-Last updated: 2026-11-26 · v0.2.0
+Last updated: 2026-11-26 · v0.3.0
 
 This runs PostgreSQL 16, Redis 7, and Stalwart Community on your machine. Stalwart is the official `stalwartlabs/stalwart:v1` image, unmodified, with no enterprise licence. Collabora and LiveKit are not part of this compose file.
+
+Drive, Docs, Meet, booking, tasks, notes, AI, compliance, and SSO records in v1 are kept in process memory on the API. They reset when the API process stops. Collabora and LiveKit are stub adapters until those servers are approved.
 
 ## Prerequisites
 

@@ -1,8 +1,12 @@
 # What's new
 
-Last updated: 2026-11-26 · v0.2.0
+Last updated: 2026-11-26 · v0.3.0
 
 Newest first, from [CHANGELOG.md](../CHANGELOG.md).
+
+## 0.3.0 — 2026-11-26
+
+Drive, Docs, Meet, booking, tasks, notes, and AI writing are in the product as working stubs. Business Plus can save compliance and single sign-on settings. Two-factor sign-in can send the code with the password or on the verify step.
 
 ## 0.2.0 — 2026-11-26
 

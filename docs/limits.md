@@ -30,3 +30,5 @@ Trial and new-tenant limits: 200 external recipients per tenant per day until th
 Extra storage: 10 GB for 99 rupees a year including GST. AI Pro add-on: 199 rupees a month including GST (proposed).
 
 Ex-GST equivalents called out in the brief: Starter 58.47, Business 126.27, Business Plus 295.76, Enterprise 592.37, Privacy 83.90.
+
+v1 gates in the API: Drive upload is 250 MB on Free, 1 GB on Starter, 5 GB on Business, and 10 GB on Business Plus and Enterprise. Share links start at Starter. Docs and ActiveSync/EWS start at Business. Meet, booking, and basic AI start at Starter (one booking page on Starter). Archive, retention, eDiscovery, legal hold, journaling, SSO, and SCIM start at Business Plus. AI over the daily cap returns `API-QUOTA-006`. An owner or security admin can turn AI off.
