@@ -1,0 +1,7 @@
+prompts
+PROJECT_BRIEF.md
+pnpm-lock.yaml
+dist
+coverage
+.expo
+node_modules

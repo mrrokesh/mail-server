@@ -1,0 +1,15 @@
+{
+  "note": "Stub only. Do not mount this file over /etc/stalwart/config.json. An empty volume lets Stalwart Community start its setup wizard. After setup, point the data store at the postgres service with the fields below. The password must match STALWART_DB_PASSWORD.",
+  "dataStore": {
+    "@type": "PostgreSql",
+    "host": "postgres",
+    "port": 5432,
+    "database": "stalwart",
+    "authUsername": "stalwart",
+    "authSecret": {
+      "@type": "Value",
+      "secret": "CHANGE_ME"
+    },
+    "useTls": false
+  }
+}

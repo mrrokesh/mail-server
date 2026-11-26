@@ -1,0 +1,1844 @@
+openapi: 3.1.0
+info:
+  title: MR Rokesh Mail API
+  version: 0.4.0
+  summary: Control plane for tenants, mail, billing, DNS, and v1 and v2 modules.
+  description: |
+    Authenticated routes take `Authorization: Bearer <access>` (15 minutes).
+    Refresh tokens are opaque, last 30 days, and are also set as the HttpOnly
+    cookie `mr_refresh` on `Path=/api/v1/auth`. Sending the refresh token in the
+    JSON body is accepted. A reused refresh token revokes its family.
+
+    The tenant id always comes from the access token. Passwords are HMAC-peppered
+    and then bcrypt-hashed. The API never returns DKIM private keys, TOTP secrets
+    after confirmation, or app-password plaintext except on the create response.
+
+    `CONTROL_STORE=memory` (the default) and `MAIL_PLANE=mock` run without Docker.
+    `CONTROL_STORE=postgres` uses `APP_DATABASE_URL` as `mrrokesh_app` after
+    `pnpm --filter @mrrokesh/backend db:migrate`.
+
+    Every error response uses `{ code, message, details }` with a code from
+    `packages/shared/errors/codes.ts`.
+
+    `POST /api/v1/auth/sign-in` is the same handler as `/login`. `POST /api/v1/auth/sign-up`
+    is the same handler as `/signup` and also accepts `{ name, email, password, organization?, plan? }`.
+    `POST /api/v1/auth/sign-out` matches `/logout`. Password reset requests also accept
+    `/auth/password/reset-request` and `/auth/password-resets`.
+
+    When MFA is on, login with `totpCode` returns a session. Login without it returns
+    `{ mfaRequired: true, challengeToken }`. `POST /api/v1/auth/mfa/verify` exchanges that
+    challenge and `code` (or `totpCode`) for a session.
+
+    v1 Docs, Meet, calendar events, contacts, AI, compliance, and SSO records stay in
+    process memory. Drive metadata, tasks, notes, and booking persist when
+    `CONTROL_STORE=postgres` after `0002_v2_modules.sql`. Collabora and LiveKit are stub
+    adapters. SSO metadata is AES-256-GCM and is never returned. ActiveSync and EWS are
+    flags only; Stalwart serves the protocols.
+
+    v2 chat is the in-house `mrrokesh-chat` service. Privacy key routes store client
+    material and do not encrypt mail. Enterprise SIEM and attack-simulation routes do
+    not deliver or send. Campaign drafts are not mailbox messages.
+servers:
+  - url: http://127.0.0.1:4000
+    description: Local API
+tags:
+  - name: health
+  - name: auth
+  - name: org
+  - name: users
+  - name: domains
+  - name: mailboxes
+  - name: audit
+  - name: billing
+  - name: mail
+  - name: drive
+  - name: docs
+  - name: meet
+  - name: booking
+  - name: tasks
+  - name: ai
+  - name: compliance
+  - name: sso
+  - name: chat
+  - name: privacy
+  - name: enterprise
+  - name: brand
+  - name: campaigns
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      tags: [health]
+      summary: Process health
+      security: []
+      responses:
+        '200':
+          description: The process is up.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/v1/health:
+    get:
+      operationId: getApiHealth
+      tags: [health]
+      summary: API health
+      security: []
+      responses:
+        '200':
+          description: The API is up.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Health'
+  /api/v1/auth/signup:
+    post:
+      operationId: signup
+      tags: [auth]
+      summary: Create an organization and its owner
+      security: []
+      description: |
+        `planTier` `free` starts an active free org. `business` with `trial: true`
+        starts a 30-day Business trial with 2 seats. Other tiers are rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: |
+            Session issued. Also sets the refresh cookie. The body keeps `session`
+            and `syncStatus`, and repeats `accessToken`, `refreshToken`, `expiresIn`,
+            `user`, and `organization` at the top level. `user.name`, `user.organization`,
+            and `user.plan` are filled for the web client.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [session, syncStatus, accessToken, refreshToken, user, organization]
+                properties:
+                  session:
+                    $ref: '#/components/schemas/Session'
+                  syncStatus:
+                    type: string
+                    enum: [synced, pending]
+                  accessToken:
+                    type: string
+                  refreshToken:
+                    type: string
+                  expiresIn:
+                    type: integer
+                  user:
+                    type: object
+                  organization:
+                    type: object
+        '422':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/sign-up:
+    post:
+      operationId: signUp
+      tags: [auth]
+      summary: Alias of POST /api/v1/auth/signup
+      security: []
+      description: |
+        Same handler as `/signup`. The shorthand body is `{ name, email, password }`
+        plus optional `organization` and `plan`. `plan: business` with no explicit
+        `trial` starts the Business trial. `fullName` maps from `name`, and a slug
+        is generated when omitted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: Same body as POST /api/v1/auth/signup.
+        '422':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Sign in
+      security: []
+      description: Unknown email and wrong password both return API-AUTH-001.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: |
+            Session, or API-SEC-001 when MFA is required. `user` includes
+            `name`, `organization`, and `plan` in addition to the control-plane fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/sign-in:
+    post:
+      operationId: signIn
+      tags: [auth]
+      summary: Alias of POST /api/v1/auth/login
+      security: []
+      description: Same handler and body as `/login`. Web and mobile call this path.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Same body as POST /api/v1/auth/login.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/refresh:
+    post:
+      operationId: refreshSession
+      tags: [auth]
+      summary: Rotate the refresh token
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: New access and refresh tokens.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Revoke the current refresh token
+      security: []
+      responses:
+        '204':
+          description: Cookie cleared.
+  /api/v1/auth/sign-out:
+    post:
+      operationId: signOut
+      tags: [auth]
+      summary: Alias of POST /api/v1/auth/logout
+      security: []
+      description: Mobile calls this path and may send `{ refreshToken }`.
+      responses:
+        '204':
+          description: Cookie cleared.
+  /api/v1/auth/password:
+    post:
+      operationId: changePassword
+      tags: [auth]
+      summary: Change the signed-in user's password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                newPassword:
+                  type: string
+      responses:
+        '204':
+          description: Password updated and other sessions revoked.
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/password/forgot:
+    post:
+      operationId: forgotPassword
+      tags: [auth]
+      summary: Start a password reset
+      security: []
+      description: Always returns the same message. A reset token is included only when NODE_ENV is test.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Reset accepted.
+  /api/v1/auth/password/reset-request:
+    post:
+      operationId: requestPasswordReset
+      tags: [auth]
+      summary: Alias of POST /api/v1/auth/password/forgot
+      security: []
+      description: Mobile calls this path.
+      responses:
+        '200':
+          description: Reset accepted.
+  /api/v1/auth/password-resets:
+    post:
+      operationId: createPasswordReset
+      tags: [auth]
+      summary: Alias of POST /api/v1/auth/password/forgot
+      security: []
+      description: The web app calls this path.
+      responses:
+        '200':
+          description: Reset accepted.
+  /api/v1/auth/password/reset:
+    post:
+      operationId: resetPassword
+      tags: [auth]
+      summary: Finish a password reset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '204':
+          description: Password updated.
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/sessions:
+    get:
+      operationId: listSessions
+      tags: [auth]
+      summary: List the caller's refresh sessions
+      responses:
+        '200':
+          description: Sessions without token hashes.
+    delete:
+      operationId: revokeAllSessions
+      tags: [auth]
+      summary: Revoke every refresh session for the caller
+      responses:
+        '204':
+          description: Revoked.
+  /api/v1/auth/sessions/{id}:
+    delete:
+      operationId: revokeSession
+      tags: [auth]
+      summary: Revoke one refresh session
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Revoked.
+  /api/v1/auth/mfa/totp/setup:
+    post:
+      operationId: setupTotp
+      tags: [auth]
+      summary: Start TOTP enrollment
+      description: Accepts a session token or an `mfa_enroll` token from API-SEC-001.
+      responses:
+        '200':
+          description: otpauth URL and the secret, shown once.
+  /api/v1/auth/mfa/totp/confirm:
+    post:
+      operationId: confirmTotp
+      tags: [auth]
+      summary: Confirm a TOTP code and turn MFA on
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: MFA enabled. An enroll-scoped token is upgraded to a session.
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/auth/passkeys/options:
+    post:
+      operationId: passkeyRegisterOptions
+      tags: [auth]
+      summary: Create a passkey registration challenge
+      description: Hook only. The API stores the credential id and sign counter. It does not verify a WebAuthn attestation.
+      responses:
+        '200':
+          description: Challenge and relying-party data.
+  /api/v1/auth/passkeys:
+    post:
+      operationId: registerPasskey
+      tags: [auth]
+      summary: Store a passkey credential id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, credentialId]
+              properties:
+                challengeId:
+                  type: string
+                credentialId:
+                  type: string
+                signCount:
+                  type: integer
+      responses:
+        '201':
+          description: Credential stored.
+    get:
+      operationId: listPasskeys
+      tags: [auth]
+      summary: List the caller's passkeys
+      responses:
+        '200':
+          description: Passkeys without secrets.
+  /api/v1/auth/passkeys/authenticate/options:
+    post:
+      operationId: passkeyAuthOptions
+      tags: [auth]
+      summary: Create a passkey authentication challenge
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Challenge. Unknown emails still receive a challenge id.
+  /api/v1/auth/passkeys/authenticate:
+    post:
+      operationId: authenticatePasskey
+      tags: [auth]
+      summary: Sign in with a stored passkey counter
+      security: []
+      description: Rejects a sign counter that is not greater than the stored counter (API-SEC-002).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, credentialId, signCount]
+              properties:
+                challengeId:
+                  type: string
+                credentialId:
+                  type: string
+                signCount:
+                  type: integer
+      responses:
+        '200':
+          description: Session issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/me:
+    get:
+      operationId: getMe
+      tags: [org]
+      summary: Current user, organization, and subscription
+      responses:
+        '200':
+          description: Caller context.
+  /api/v1/org:
+    get:
+      operationId: getOrg
+      tags: [org]
+      summary: Current organization
+      responses:
+        '200':
+          description: Organization.
+    patch:
+      operationId: patchOrg
+      tags: [org]
+      summary: Rename the organization
+      description: Owner only. Unknown fields, including sendingPaused, are ignored.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+      responses:
+        '200':
+          description: Updated organization.
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/org/mfa-policy:
+    put:
+      operationId: setMfaPolicy
+      tags: [org]
+      summary: Require MFA for the organization
+      description: Starter and above. Security admin or owner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enforceMfa]
+              properties:
+                enforceMfa:
+                  type: boolean
+      responses:
+        '200':
+          description: Policy saved.
+        '402':
+          $ref: '#/components/responses/Error'
+  /api/v1/users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List users in the organization
+      responses:
+        '200':
+          description: Users.
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a user
+      description: Counts toward the seat cap (API-QUOTA-003). A second owner is rejected.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, fullName, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                fullName:
+                  type: string
+                password:
+                  type: string
+                role:
+                  type: string
+      responses:
+        '201':
+          description: User created.
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/users/{id}/suspend:
+    post:
+      operationId: suspendUser
+      tags: [users]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: User suspended.
+  /api/v1/users/{id}/restore:
+    post:
+      operationId: restoreUser
+      tags: [users]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: User restored when the delete window is still open.
+  /api/v1/users/{id}:
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Soft-delete a user
+      description: Helpdesk cannot delete. The owner and the caller cannot be deleted.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Deleted.
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/users/{id}/password:
+    post:
+      operationId: resetUserPassword
+      tags: [users]
+      summary: Set another user's password
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        '204':
+          description: Password set and that user's sessions revoked.
+  /api/v1/users/{id}/sessions:
+    delete:
+      operationId: revokeUserSessions
+      tags: [users]
+      summary: Revoke another user's sessions
+      description: Security admin or owner.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '204':
+          description: Revoked.
+  /api/v1/domains:
+    get:
+      operationId: listDomains
+      tags: [domains]
+      summary: List domains in the organization
+      responses:
+        '200':
+          description: Domains.
+    post:
+      operationId: createDomain
+      tags: [domains]
+      summary: Add a domain and generate DKIM
+      description: Enforces the domain cap (API-QUOTA-005). A name owned by another tenant is API-DNS-007.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domainName]
+              properties:
+                domainName:
+                  type: string
+      responses:
+        '201':
+          description: Domain created. The response includes the ownership TXT value, not the DKIM private key.
+  /api/v1/domains/{id}:
+    get:
+      operationId: getDomain
+      tags: [domains]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Domain.
+        '404':
+          $ref: '#/components/responses/Error'
+    patch:
+      operationId: setCatchAll
+      tags: [domains]
+      summary: Point catch-all at a mailbox
+      description: Requires the catch-all entitlement (Starter and above).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                catchAllMailboxId:
+                  type: string
+                  format: uuid
+                  nullable: true
+      responses:
+        '200':
+          description: Updated domain.
+  /api/v1/domains/{id}/dns:
+    get:
+      operationId: domainDnsRecords
+      tags: [domains]
+      summary: Suggested DNS records
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: MX, SPF, DKIM, DMARC, MTA-STS, TLS-RPT, and autoconfig records.
+  /api/v1/domains/{id}/verify:
+    post:
+      operationId: verifyDomain
+      tags: [domains]
+      summary: Check live DNS and update verification flags
+      description: |
+        Missing ownership returns 422 API-DNS-001 and does not flip flags.
+        Other failures return 200 with `checks[].code`. Score is 20 points each for
+        ownership, MX, SPF, DKIM, and DMARC.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Checks and the updated domain.
+        '422':
+          $ref: '#/components/responses/Error'
+  /api/v1/mailboxes:
+    get:
+      operationId: listMailboxes
+      tags: [mailboxes]
+      summary: Mailboxes the caller can see
+      responses:
+        '200':
+          description: Own mailbox, plus shared and delegated mailboxes for admins and delegates.
+    post:
+      operationId: createMailbox
+      tags: [mailboxes]
+      summary: Create a mailbox
+      description: Shared mailboxes require Starter or above (API-BILL-003).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domainId, localPart]
+              properties:
+                domainId:
+                  type: string
+                  format: uuid
+                localPart:
+                  type: string
+                kind:
+                  type: string
+                  enum: [user, shared, room_resource, equipment_resource]
+                userId:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Mailbox created and a provisioning sync attempted.
+  /api/v1/mailboxes/{id}/aliases:
+    post:
+      operationId: createAlias
+      tags: [mailboxes]
+      summary: Add an alias
+      description: Enforces the alias cap (API-QUOTA-004).
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [domainId, localPart]
+              properties:
+                domainId:
+                  type: string
+                  format: uuid
+                localPart:
+                  type: string
+      responses:
+        '201':
+          description: Alias created.
+  /api/v1/mailboxes/{id}/aliases/{aliasId}:
+    delete:
+      operationId: deleteAlias
+      tags: [mailboxes]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: aliasId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Alias removed.
+  /api/v1/mailboxes/{id}/delegations:
+    post:
+      operationId: createDelegation
+      tags: [mailboxes]
+      summary: Delegate a mailbox
+      description: Send-as requires the plan entitlement.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delegateUserId]
+              properties:
+                delegateUserId:
+                  type: string
+                  format: uuid
+                canRead:
+                  type: boolean
+                canSendAs:
+                  type: boolean
+                canSendOnBehalf:
+                  type: boolean
+      responses:
+        '201':
+          description: Delegation saved.
+  /api/v1/mailboxes/{id}/app-passwords:
+    post:
+      operationId: createAppPassword
+      tags: [mailboxes]
+      summary: Create an IMAP or SMTP app password
+      description: Plaintext is returned once, prefixed with `mrm_`. Requires the IMAP entitlement.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label, protocol]
+              properties:
+                label:
+                  type: string
+                protocol:
+                  type: string
+                  enum: [imap, smtp, pop3]
+      responses:
+        '201':
+          description: Secret returned once.
+    get:
+      operationId: listAppPasswords
+      tags: [mailboxes]
+      summary: List app passwords without secrets
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Metadata only.
+  /api/v1/audit:
+    get:
+      operationId: listAudit
+      tags: [audit]
+      summary: List audit events
+      description: Free plans return API-BILL-003. Retention days come from the plan.
+      responses:
+        '200':
+          description: Newest events first.
+        '402':
+          $ref: '#/components/responses/Error'
+  /api/v1/billing/plans:
+    get:
+      operationId: listPlans
+      tags: [billing]
+      summary: Public plan catalog
+      security: []
+      responses:
+        '200':
+          description: Prices in paise, GST-inclusive, and entitlements.
+  /api/v1/billing/subscription:
+    get:
+      operationId: getSubscription
+      tags: [billing]
+      summary: Current subscription
+      responses:
+        '200':
+          description: Subscription and plan.
+  /api/v1/billing/usage:
+    get:
+      operationId: getUsage
+      tags: [billing]
+      summary: Seat, domain, alias, and sending usage
+      responses:
+        '200':
+          description: Usage against effective limits.
+  /api/v1/billing/invoices:
+    get:
+      operationId: listInvoices
+      tags: [billing]
+      summary: GST invoices
+      responses:
+        '200':
+          description: Invoices for the organization.
+  /api/v1/billing/checkout:
+    post:
+      operationId: createCheckout
+      tags: [billing]
+      summary: Create a Razorpay checkout stub
+      description: |
+        Self-serve tiers are starter, business, and business_plus. The response
+        includes the GST split. No live Razorpay order is created.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planTier, billingCycle, placeOfSupply]
+              properties:
+                planTier:
+                  type: string
+                  enum: [starter, business, business_plus]
+                billingCycle:
+                  type: string
+                  enum: [monthly, annual]
+                gstin:
+                  type: string
+                placeOfSupply:
+                  type: string
+      responses:
+        '201':
+          description: Checkout id and GST breakdown.
+        '422':
+          $ref: '#/components/responses/Error'
+  /api/v1/billing/webhooks/razorpay:
+    post:
+      operationId: razorpayWebhook
+      tags: [billing]
+      summary: Apply a signed Razorpay stub event
+      security: []
+      description: |
+        Header `x-razorpay-signature` is HMAC-SHA256 hex of the raw body.
+        Events: payment.captured, payment.failed, subscription.halted, subscription.cancelled.
+        A bad signature is API-BILL-001.
+      parameters:
+        - name: x-razorpay-signature
+          in: header
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event, checkoutId]
+              properties:
+                event:
+                  type: string
+                checkoutId:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: Applied or ignored.
+        '402':
+          $ref: '#/components/responses/Error'
+  /api/v1/mail/protocols:
+    get:
+      operationId: protocolAccess
+      tags: [mail]
+      summary: Whether IMAP, SMTP, or POP3 is in the plan
+      parameters:
+        - name: protocol
+          in: query
+          schema:
+            type: string
+            enum: [imap, smtp, pop3]
+      responses:
+        '200':
+          description: Allowed.
+        '402':
+          $ref: '#/components/responses/Error'
+  /api/v1/mail/session:
+    post:
+      operationId: openMailSession
+      tags: [mail]
+      summary: Open a JMAP-shaped session
+      responses:
+        '200':
+          description: Account id, api url, and the IP pool label.
+  /api/v1/mail/threads:
+    get:
+      operationId: listThreads
+      tags: [mail]
+      summary: List messages in the web thread shape
+      description: |
+        Same rows as GET /mail/messages, wrapped as `{ threads }`. Each row includes
+        `folder`, `fromName`, `fromEmail`, `toEmail`, `preview`, `bodyHtml`, and
+        `receivedAt`. The mock plane only files messages as inbox or sent.
+      responses:
+        '200':
+          description: Thread list.
+  /api/v1/mail/messages:
+    get:
+      operationId: listMessages
+      tags: [mail]
+      summary: List messages in a mailbox
+      description: |
+        Pass `mailboxId` (mailbox id or Stalwart principal id) or `mailbox`
+        (`inbox`, `sent`, `drafts`, `archive`, `spam`). The body is
+        `{ messages }` and each row keeps `from`, `to`, `text`, and `at` plus
+        `fromAddress`, `fromName`, `preview`, `bodyText`, and `receivedAt`.
+      parameters:
+        - name: mailboxId
+          in: query
+          schema:
+            type: string
+        - name: mailbox
+          in: query
+          schema:
+            type: string
+            enum: [inbox, sent, drafts, archive, spam]
+      responses:
+        '200':
+          description: Messages from the mail plane.
+        '422':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: sendMessage
+      tags: [mail]
+      summary: Send through the mail proxy
+      description: |
+        Checks a writable subscription, sending pause (API-MAIL-003), a verified
+        domain (API-MAIL-004), recipient validity (API-MAIL-005), per-message
+        recipients (API-MAIL-002), size (API-MAIL-001), then daily and per-minute
+        counters (API-QUOTA-002). `to` may be one address or a list. `from` defaults
+        to the caller's user mailbox. `text` and `textBody` are the same field.
+        The 201 body keeps the control-plane fields and adds the web thread fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendMessage'
+      responses:
+        '201':
+          description: Accepted by the mail plane.
+        '403':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        '413':
+          $ref: '#/components/responses/Error'
+        '422':
+          $ref: '#/components/responses/Error'
+  /api/v1/mail/messages/{id}:
+    get:
+      operationId: getMessage
+      tags: [mail]
+      summary: Read one message
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: One message in the list shape.
+        '404':
+          $ref: '#/components/responses/Error'
+  /api/v1/mail/jmap:
+    post:
+      operationId: jmap
+      tags: [mail]
+      summary: Small JMAP subset
+      description: |
+        `Email/set` create submits mail with the same limits as POST /mail/messages.
+        `Mailbox/get` lists visible mailboxes. Other methods return unknownMethod.
+        Entitlement failures use the HTTP error body, not a JMAP error object.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [methodCalls]
+              properties:
+                using:
+                  type: array
+                  items:
+                    type: string
+                methodCalls:
+                  type: array
+      responses:
+        '200':
+          description: Method responses.
+  /api/v1/plans:
+    get:
+      operationId: listWebPlans
+      tags: [billing]
+      summary: Plan catalog in the web pricing shape
+      security: []
+      responses:
+        '200':
+          description: Plans with INR prices and highlight lines.
+  /api/v1/auth/mfa/verify:
+    post:
+      operationId: verifyMfa
+      tags: [auth]
+      summary: Finish sign-in with a challenge token and TOTP code
+      security: []
+      responses:
+        '200':
+          description: Session. Same body as login.
+        '401':
+          $ref: '#/components/responses/Error'
+  /api/v1/drive/files:
+    get:
+      operationId: listDriveFiles
+      tags: [drive]
+      summary: List drive files for the tenant
+      responses:
+        '200':
+          description: Files plus plan upload and storage caps.
+    post:
+      operationId: createDriveFile
+      tags: [drive]
+      summary: Record an upload stub
+      responses:
+        '201':
+          description: File metadata.
+        '413':
+          $ref: '#/components/responses/Error'
+  /api/v1/drive/files/{id}/shares:
+    post:
+      operationId: createDriveShare
+      tags: [drive]
+      summary: Create a share link
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '201':
+          description: Token and public path. Password is not returned.
+        '402':
+          $ref: '#/components/responses/Error'
+  /api/v1/public/drive/{token}:
+    get:
+      operationId: readPublicDriveShare
+      tags: [drive]
+      summary: Read a public share link
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: password
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: File metadata, or locked when a password is required.
+  /api/v1/docs:
+    get:
+      operationId: listDocs
+      tags: [docs]
+      summary: List documents and the WOPI stub
+      responses:
+        '200':
+          description: Documents, templates, and adapter note.
+        '402':
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: createDoc
+      tags: [docs]
+      summary: Create a document stub
+      responses:
+        '201':
+          description: Document.
+  /api/v1/docs/{id}/wopi:
+    get:
+      operationId: wopiCheck
+      tags: [docs]
+      summary: WOPI CheckFileInfo stub
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: CheckFileInfo fields plus adapter wopi-stub.
+    post:
+      operationId: wopiSave
+      tags: [docs]
+      summary: WOPI save stub
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: New version and size.
+  /api/v1/meet/rooms:
+    get:
+      operationId: listMeetings
+      tags: [meet]
+      summary: List meeting rooms
+      responses:
+        '200':
+          description: Rooms with LiveKit stub fields.
+    post:
+      operationId: createMeeting
+      tags: [meet]
+      summary: Create a meeting shell
+      responses:
+        '201':
+          description: Room, participant cap, and stub token.
+  /api/v1/booking/pages:
+    get:
+      operationId: listBookingPages
+      tags: [booking]
+      summary: List booking pages
+      responses:
+        '200':
+          description: Pages owned by the tenant.
+    post:
+      operationId: createBookingPage
+      tags: [booking]
+      summary: Create a booking page
+      responses:
+        '201':
+          description: Page.
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/public/booking/{slug}:
+    get:
+      operationId: readPublicBooking
+      tags: [booking]
+      summary: Public booking page and open slots
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Title, timezone, and slots.
+    post:
+      operationId: bookPublicSlot
+      tags: [booking]
+      summary: Reserve a slot
+      security: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Reservation and stub Meet link.
+        '409':
+          $ref: '#/components/responses/Error'
+  /api/v1/tasks:
+    get:
+      operationId: listTasks
+      tags: [tasks]
+      summary: List tasks
+      responses:
+        '200':
+          description: Tasks.
+    post:
+      operationId: createTask
+      tags: [tasks]
+      summary: Create a task
+      responses:
+        '201':
+          description: Task.
+  /api/v1/tasks/{id}:
+    patch:
+      operationId: patchTask
+      tags: [tasks]
+      summary: Update a task
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Task.
+  /api/v1/notes:
+    get:
+      operationId: listNotes
+      tags: [tasks]
+      summary: List notes
+      responses:
+        '200':
+          description: Notes.
+    post:
+      operationId: createNote
+      tags: [tasks]
+      summary: Create a note
+      responses:
+        '201':
+          description: Note.
+  /api/v1/notes/{id}:
+    patch:
+      operationId: patchNote
+      tags: [tasks]
+      summary: Update a note
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Note.
+  /api/v1/ai/status:
+    get:
+      operationId: aiStatus
+      tags: [ai]
+      summary: AI entitlement, switch, and today's usage
+      responses:
+        '200':
+          description: Status.
+  /api/v1/admin/ai:
+    put:
+      operationId: setAiEnabled
+      tags: [ai]
+      summary: Turn AI on or off for the tenant
+      responses:
+        '200':
+          description: Status.
+        '403':
+          $ref: '#/components/responses/Error'
+  /api/v1/ai/write:
+    post:
+      operationId: aiWrite
+      tags: [ai]
+      summary: Writing stub
+      responses:
+        '200':
+          description: Draft text and remaining actions.
+        '429':
+          $ref: '#/components/responses/Error'
+  /api/v1/ai/summarize:
+    post:
+      operationId: aiSummarize
+      tags: [ai]
+      summary: Summary stub
+      responses:
+        '200':
+          description: Summary and remaining actions.
+        '429':
+          $ref: '#/components/responses/Error'
+  /api/v1/compliance:
+    get:
+      operationId: getCompliance
+      tags: [compliance]
+      summary: Archive, retention, discovery, holds, and journals
+      responses:
+        '200':
+          description: Compliance hooks.
+        '402':
+          $ref: '#/components/responses/Error'
+  /api/v1/compliance/archive:
+    put:
+      operationId: setArchive
+      tags: [compliance]
+      summary: Toggle the archive hook
+      responses:
+        '200':
+          description: Archive flag.
+  /api/v1/compliance/retention:
+    put:
+      operationId: setRetention
+      tags: [compliance]
+      summary: Set retention days
+      responses:
+        '200':
+          description: Retention.
+  /api/v1/compliance/ediscovery:
+    post:
+      operationId: createDiscovery
+      tags: [compliance]
+      summary: Save an eDiscovery query stub
+      responses:
+        '201':
+          description: Case with status stub.
+  /api/v1/compliance/holds:
+    post:
+      operationId: createHold
+      tags: [compliance]
+      summary: Place a legal hold stub
+      responses:
+        '201':
+          description: Hold.
+  /api/v1/compliance/journaling:
+    post:
+      operationId: createJournal
+      tags: [compliance]
+      summary: Add a journaling destination
+      responses:
+        '201':
+          description: Journal rule.
+  /api/v1/admin/sso:
+    get:
+      operationId: getSso
+      tags: [sso]
+      summary: Read SSO config without secrets
+      responses:
+        '200':
+          description: Protocol and issuer, or configured false.
+    put:
+      operationId: putSso
+      tags: [sso]
+      summary: Store encrypted SAML or OIDC metadata
+      responses:
+        '200':
+          description: Redacted config.
+  /api/v1/admin/scim/tokens:
+    get:
+      operationId: listScimTokens
+      tags: [sso]
+      summary: List SCIM tokens without secrets
+      responses:
+        '200':
+          description: Token ids and labels.
+    post:
+      operationId: createScimToken
+      tags: [sso]
+      summary: Create a SCIM token
+      responses:
+        '201':
+          description: Token plaintext, returned once.
+  /api/v1/scim/v2/ServiceProviderConfig:
+    get:
+      operationId: scimProvider
+      tags: [sso]
+      summary: SCIM service provider skeleton
+      security: []
+      responses:
+        '200':
+          description: Provider config.
+  /api/v1/scim/v2/Users:
+    get:
+      operationId: scimListUsers
+      tags: [sso]
+      summary: List SCIM users
+      responses:
+        '200':
+          description: ListResponse.
+    post:
+      operationId: scimCreateUser
+      tags: [sso]
+      summary: Create a SCIM user skeleton
+      responses:
+        '201':
+          description: User. Not a mailbox.
+  /api/v1/calendar/events:
+    get:
+      operationId: listEvents
+      tags: [mail]
+      summary: List calendar events in the web shape
+      responses:
+        '200':
+          description: Events wrapped for the web client.
+    post:
+      operationId: createEvent
+      tags: [mail]
+      summary: Create a calendar event
+      responses:
+        '201':
+          description: Event.
+  /api/v1/contacts:
+    get:
+      operationId: listContacts
+      tags: [mail]
+      summary: Directory plus personal contacts
+      responses:
+        '200':
+          description: Directory and personal contacts.
+    post:
+      operationId: createContact
+      tags: [mail]
+      summary: Create a personal contact
+      responses:
+        '201':
+          description: Contact.
+  /api/v1/chat/conversations:
+    get:
+      operationId: listChatConversations
+      tags: [chat]
+      summary: List conversations for the caller
+      responses:
+        '200':
+          description: mrrokesh-chat conversations. adapter is memory or postgres.
+    post:
+      operationId: createChatConversation
+      tags: [chat]
+      summary: Create a direct chat, group, or channel
+      responses:
+        '201':
+          description: Conversation. Business and above.
+  /api/v1/chat/conversations/{id}/messages:
+    get:
+      operationId: listChatMessages
+      tags: [chat]
+      summary: List messages and thread replies
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Messages for a member.
+    post:
+      operationId: createChatMessage
+      tags: [chat]
+      summary: Post a message or a thread reply
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '201':
+          description: Message. driveFileId must already exist.
+  /api/v1/chat/search:
+    get:
+      operationId: searchChat
+      tags: [chat]
+      summary: Search chat history the caller can see
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Up to 100 hits.
+  /api/v1/chat/presence:
+    get:
+      operationId: chatPresence
+      tags: [chat]
+      summary: Presence stub. Not linked to calendar.
+      responses:
+        '200':
+          description: calendarLinked is false.
+  /api/v1/privacy/aliases:
+    get:
+      operationId: listMaskedAliases
+      tags: [privacy]
+      summary: List masked aliases
+      responses:
+        '200':
+          description: Addresses on mask.mrrokesh.mail. Not routed.
+    post:
+      operationId: createMaskedAlias
+      tags: [privacy]
+      summary: Create a masked alias
+      responses:
+        '201':
+          description: Alias. Over the cap is API-QUOTA-004.
+  /api/v1/privacy/aliases/{id}/disable:
+    post:
+      operationId: disableMaskedAlias
+      tags: [privacy]
+      summary: Disable one masked alias
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Alias with enabled false.
+  /api/v1/privacy/dashboard:
+    get:
+      operationId: privacyDashboard
+      tags: [privacy]
+      summary: Privacy dashboard stub
+      responses:
+        '200':
+          description: Tracker counts are null. Zero-access is a hook.
+  /api/v1/privacy/addon:
+    put:
+      operationId: setPrivacyAddon
+      tags: [privacy]
+      summary: Record the Privacy add-on flag. This is not a charge.
+      responses:
+        '200':
+          description: addon and billed false.
+  /api/v1/privacy/keys:
+    get:
+      operationId: listPrivacyKeys
+      tags: [privacy]
+      summary: List stored key hooks without private material
+      responses:
+        '200':
+          description: Fingerprints. serverDecrypts and generatesKeys are false.
+    put:
+      operationId: savePrivacyKey
+      tags: [privacy]
+      summary: Store a client public key and a wrapped private key
+      responses:
+        '200':
+          description: Hook only. An unprotected private key is rejected.
+  /api/v1/privacy/recovery:
+    post:
+      operationId: registerPrivacyRecovery
+      tags: [privacy]
+      summary: Record that the client has a recovery phrase
+      responses:
+        '200':
+          description: phraseStored is false. The phrase is not accepted.
+  /api/v1/enterprise:
+    get:
+      operationId: enterpriseHome
+      tags: [enterprise]
+      summary: Enterprise hooks for the organisation
+      responses:
+        '200':
+          description: BYOK versions, SIEM destinations, simulations, dedicated IP flag.
+  /api/v1/enterprise/byok:
+    post:
+      operationId: registerByok
+      tags: [enterprise]
+      summary: Register a customer key version
+      responses:
+        '201':
+          description: Key reference only. appliedToMail is false.
+  /api/v1/enterprise/siem:
+    post:
+      operationId: saveSiem
+      tags: [enterprise]
+      summary: Store a webhook or syslog destination
+      responses:
+        '201':
+          description: Destination. delivered is false.
+  /api/v1/enterprise/siem/{id}/sample:
+    post:
+      operationId: sampleSiem
+      tags: [enterprise]
+      summary: Build a SIEM sample without sending it
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Sample event. delivered is false.
+  /api/v1/enterprise/attack-simulations:
+    post:
+      operationId: createAttackSimulation
+      tags: [enterprise]
+      summary: Create an attack-simulation placeholder
+      responses:
+        '201':
+          description: emailsSent is 0.
+  /api/v1/enterprise/dedicated-ip:
+    put:
+      operationId: setDedicatedIp
+      tags: [enterprise]
+      summary: Set the dedicated IP flag
+      responses:
+        '200':
+          description: routed is false.
+  /api/v1/admin/brand:
+    get:
+      operationId: getBrand
+      tags: [brand]
+      summary: Read the partner login brand
+      responses:
+        '200':
+          description: Host, name, and logo. accentToken is brand.
+    put:
+      operationId: saveBrand
+      tags: [brand]
+      summary: Save the login host, name, and https logo
+      responses:
+        '200':
+          description: Colour fields are rejected.
+  /api/v1/public/brand:
+    get:
+      operationId: publicBrand
+      tags: [brand]
+      summary: Public login brand for a host
+      security: []
+      parameters:
+        - name: host
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Custom brand or the MR Rokesh default.
+  /api/v1/campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List campaign drafts
+      responses:
+        '200':
+          description: Drafts are not mailbox messages.
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create a campaign draft with RFC 8058 headers
+      responses:
+        '201':
+          description: List-Unsubscribe and List-Unsubscribe-Post. Nothing is sent.
+  /api/v1/public/campaigns/unsubscribe/{token}:
+    get:
+      operationId: unsubscribeInfo
+      tags: [campaigns]
+      summary: Describe the one-click unsubscribe placeholder
+      security: []
+      responses:
+        '200':
+          description: Instructions. No mail is sent.
+    post:
+      operationId: unsubscribe
+      tags: [campaigns]
+      summary: Record an RFC 8058 one-click unsubscribe
+      security: []
+      responses:
+        '200':
+          description: Suppression. Accepts JSON or form body.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          const: ok
+        service:
+          type: string
+    ErrorBody:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: A code from packages/shared/errors/codes.ts
+          examples: ['API-RES-404']
+        message:
+          type: string
+        details:
+          description: Optional structured context. Never a stack trace or secret.
+    SignupRequest:
+      type: object
+      description: |
+        Control plane requires organizationName, slug, email, password, and fullName.
+        Web and mobile may send name, email, password, and optional organization and plan
+        instead. A missing slug is generated.
+      required: [email, password]
+      properties:
+        organizationName:
+          type: string
+        organization:
+          type: string
+        slug:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        fullName:
+          type: string
+        name:
+          type: string
+        planTier:
+          type: string
+          enum: [free, starter, business, business_plus, enterprise]
+        plan:
+          type: string
+          enum: [free, starter, business, business_plus, enterprise]
+        trial:
+          type: boolean
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        totpCode:
+          type: string
+        platform:
+          type: string
+          enum: [web, android, ios]
+    Session:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, user, organization]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+        user:
+          type: object
+          description: Control-plane user plus `name`, `organization`, and `plan` on sign-in.
+        organization:
+          type: object
+    SendMessage:
+      type: object
+      required: [to]
+      properties:
+        from:
+          type: string
+          format: email
+        to:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        subject:
+          type: string
+        text:
+          type: string
+        textBody:
+          type: string
+        sizeBytes:
+          type: integer
+  responses:
+    Error:
+      description: Standard API error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+security:
+  - bearerAuth: []

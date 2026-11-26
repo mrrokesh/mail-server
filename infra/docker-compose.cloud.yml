@@ -1,0 +1,89 @@
+# Rokesh Cloud / public host profile for Stalwart with Jio port 25.
+# Binds mail ports on all interfaces (not loopback). Use only on the
+# rokeshcloud.com MX host. Local dev keeps infra/docker-compose.yml.
+#
+#   docker compose --env-file .env -f infra/docker-compose.cloud.yml up -d
+
+name: mrrokesh-mail-cloud
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mrrokesh_mail}
+      POSTGRES_USER: ${POSTGRES_USER:-mrrokesh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME}
+      STALWART_DB_PASSWORD: ${STALWART_DB_PASSWORD:-CHANGE_ME}
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-mrrokesh} -d ${POSTGRES_DB:-mrrokesh_mail}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:-CHANGE_ME}
+      - --appendonly
+      - 'yes'
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-CHANGE_ME}
+
+  stalwart:
+    image: stalwartlabs/stalwart:v1
+    restart: unless-stopped
+    init: true
+    ports:
+      - '25:25'
+      - '465:465'
+      - '587:587'
+      - '993:993'
+      - '995:995'
+      - '4190:4190'
+      - '8081:8080'
+    volumes:
+      - stalwart_etc:/etc/stalwart
+      - stalwart_data:/var/lib/stalwart
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: ['--dev', '--bind', '0.0.0.0']
+    ports:
+      - '7880:7880'
+
+  collabora:
+    image: collabora/code:latest
+    restart: unless-stopped
+    environment:
+      aliasgroup1: ${WOPI_ALIAS_GROUP:-https://api.rokeshcloud.com}
+      username: admin
+      password: ${COLLABORA_ADMIN_PASSWORD:-CHANGE_ME}
+      extra_params: '--o:ssl.enable=false --o:ssl.termination=true --o:net.frame_ancestors=https://mail.rokeshcloud.com https://rokeshcloud.com'
+    ports:
+      - '9980:9980'
+    cap_add:
+      - SYS_ADMIN
+
+volumes:
+  pg_data:
+  redis_data:
+  stalwart_etc:
+  stalwart_data:

@@ -1,0 +1,96 @@
+# Local control-plane dependencies.
+# Stalwart runs unmodified from the Community image (stalwartlabs/stalwart:v1).
+# No enterprise licence is mounted. Mail ports are bound to loopback.
+#
+# From the repo root:
+#   docker compose --env-file .env -f infra/docker-compose.yml up -d
+
+name: mrrokesh-mail
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mrrokesh_mail}
+      POSTGRES_USER: ${POSTGRES_USER:-mrrokesh}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGE_ME}
+      STALWART_DB_PASSWORD: ${STALWART_DB_PASSWORD:-CHANGE_ME}
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-mrrokesh} -d ${POSTGRES_DB:-mrrokesh_mail}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:-CHANGE_ME}
+      - --appendonly
+      - 'yes'
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis_data:/data
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-CHANGE_ME}
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli -a "$$REDIS_PASSWORD" ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  stalwart:
+    image: stalwartlabs/stalwart:v1
+    restart: unless-stopped
+    init: true
+    ports:
+      - '127.0.0.1:25:25'
+      - '127.0.0.1:465:465'
+      - '127.0.0.1:587:587'
+      - '127.0.0.1:993:993'
+      - '127.0.0.1:995:995'
+      - '127.0.0.1:4190:4190'
+      - '127.0.0.1:443:443'
+      - '127.0.0.1:8081:8080'
+    volumes:
+      - stalwart_etc:/etc/stalwart
+      - stalwart_data:/var/lib/stalwart
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    command: ['--dev', '--bind', '0.0.0.0']
+    ports:
+      - '127.0.0.1:7880:7880'
+
+  collabora:
+    image: collabora/code:latest
+    restart: unless-stopped
+    environment:
+      aliasgroup1: http://host.docker.internal:4000
+      username: admin
+      password: ${COLLABORA_ADMIN_PASSWORD:-CHANGE_ME}
+      extra_params: '--o:ssl.enable=false --o:ssl.termination=false --o:net.frame_ancestors=http://127.0.0.1:5173 http://localhost:5173'
+    ports:
+      - '127.0.0.1:9980:9980'
+    cap_add:
+      - SYS_ADMIN
+
+volumes:
+  pg_data:
+  redis_data:
+  stalwart_etc:
+  stalwart_data:
