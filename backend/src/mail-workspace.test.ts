@@ -125,18 +125,23 @@ test('mail workspace features: drafts, templates, rules, preferences, admin over
   assert.equal(autoconfig.statusCode, 200);
   assert.match(autoconfig.body, /<domain>northwind\.example<\/domain>/);
 
-  // Primary mailbox auto-provisioned on signup and repaired on login
-  const ownerMailboxes = await app.inject({
+  // Signup must NOT auto-claim unowned email domains
+  const initialDomains = await app.inject({
     method: 'GET',
-    url: '/api/v1/mailboxes',
+    url: '/api/v1/domains',
     headers,
   });
-  assert.equal(ownerMailboxes.statusCode, 200);
-  assert.ok(
-    (ownerMailboxes.json() as { address: string }[]).some(
-      (row) => row.address === 'ada@northwind.example',
-    ),
-  );
+  assert.equal(initialDomains.statusCode, 200);
+  assert.equal((initialDomains.json() as unknown[]).length, 0);
+
+  // Admin connects the company domain -> logging in safely auto-provisions primary mailboxes
+  const addedDomain = await app.inject({
+    method: 'POST',
+    url: '/api/v1/domains',
+    headers,
+    payload: { domainName: 'northwind.example' },
+  });
+  assert.equal(addedDomain.statusCode, 201, addedDomain.body);
 
   const invited = await app.inject({
     method: 'POST',

@@ -15,7 +15,7 @@ All notable changes to MR Rokesh Mail are recorded here. The docs page "What's n
 
 ### Fixed
 
-- Restored `ensurePrimaryMailbox` calls in `signupAccount` and `loginAccount` (`backend/src/services/auth.ts`) while excluding consumer/reserved webmail domains (`example.com`, `gmail.com`, etc.) in `backend/src/services/mailboxes.ts` so new/returning custom-domain users automatically receive a primary mailbox without consuming Free domain limits.
+- Enabled safe auto-inbox provisioning in `signupAccount` and `loginAccount` (`backend/src/services/mailboxes.ts` `ensurePrimaryMailbox`) so users automatically receive their primary mailbox only when their workspace already owns that domain, preventing public/external domain hijacking or Free-tier quota exhaustion.
 - Local Compose services for LiveKit (`127.0.0.1:7880`) and Collabora (`127.0.0.1:9980`).
 - Stalwart JMAP provisioning from the API, with a local message mirror while the engine is in setup.
 - Redis fixed-window rate limits when `REDIS_URL` is set.

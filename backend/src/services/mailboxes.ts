@@ -1,6 +1,4 @@
 import crypto from 'node:crypto';
-import { encryptString } from '../crypto/aes';
-import { generateDkimKey } from '../crypto/dkim';
 import { quotaBytes, seatCap, withinCap } from '../billing/entitlements';
 import { hashPassword, newOpaqueToken, passwordPolicyError } from '../crypto/password';
 import { ApiError } from '../errors';
@@ -390,22 +388,11 @@ export async function createAppPassword(
 }
 
 const DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
-const SKIP_AUTO_DOMAIN = new Set([
-  'example.com',
-  'example.org',
-  'example.net',
-  'gmail.com',
-  'googlemail.com',
-  'yahoo.com',
-  'outlook.com',
-  'hotmail.com',
-  'live.com',
-  'icloud.com',
-  'proton.me',
-  'protonmail.com',
-]);
 
-/** Gives the signed-in person a mailbox on the domain in their address. */
+/**
+ * Safely auto-provisions a primary mailbox for the signed-in user only when
+ * their workspace already owns the email domain (never claims external domains).
+ */
 export async function ensurePrimaryMailbox(
   deps: AppDeps,
   user: UserRecord,
@@ -415,51 +402,10 @@ export async function ensurePrimaryMailbox(
   const domainName = user.email.split('@')[1]?.toLowerCase() ?? '';
   const localPart = user.email.split('@')[0]?.toLowerCase() ?? '';
   if (!DOMAIN_RE.test(domainName) || !LOCAL_RE.test(localPart)) return;
-  if (SKIP_AUTO_DOMAIN.has(domainName)) return;
-  let domain = (await deps.store.listDomains(org.id)).find((row) => row.domainName === domainName);
-  if (!domain) {
-    const taken = await deps.store.findDomainByName(domainName);
-    if (taken) return;
-    const now = deps.now();
-    const dkim = generateDkimKey(now);
-    const encrypted = encryptString(deps.config.dataEncryptionKey, dkim.privateKeyPem);
-    domain = {
-      id: crypto.randomUUID(),
-      organizationId: org.id,
-      domainName,
-      verificationTxt: crypto.randomBytes(18).toString('base64url'),
-      isVerified: false,
-      mxVerified: false,
-      spfVerified: false,
-      dkimVerified: false,
-      dmarcVerified: false,
-      mtaStsEnabled: false,
-      daneEnabled: false,
-      deliverabilityScore: 0,
-      catchAllMailboxId: null,
-      lastDnsCheckedAt: null,
-      createdAt: now,
-    };
-    const inserted = await deps.store.insertDomain(domain, {
-      id: crypto.randomUUID(),
-      domainId: domain.id,
-      organizationId: org.id,
-      selector: dkim.selector,
-      algorithm: 'rsa-2048',
-      publicKeyDns: dkim.publicKeyDns,
-      privateKeyEnc: encrypted.ciphertext,
-      privateKeyIv: encrypted.iv,
-      isActive: true,
-      rotateAfter: dkim.rotateAfter,
-      createdAt: now,
-    });
-    if (inserted === 'duplicate') return;
-    await deps.mail.ensureTenant({
-      organizationId: org.id,
-      stalwartTenantId: org.stalwartTenantId,
-      name: domainName,
-    });
-  }
+  const domain = (await deps.store.listDomains(org.id)).find(
+    (row) => row.domainName === domainName,
+  );
+  if (!domain) return;
   const existing = (await deps.store.listMailboxes(org.id)).find(
     (row) => row.userId === user.id && row.kind === 'user',
   );
