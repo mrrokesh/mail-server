@@ -8,7 +8,7 @@ import { FormAlert } from '../../../src/components/ui/FormAlert';
 import { Screen } from '../../../src/components/ui/Screen';
 import { TextField } from '../../../src/components/ui/TextField';
 import { fieldMessages, composeFormSchema } from '../../../src/features/auth/forms';
-import { sendMessage } from '../../../src/features/mail/api';
+import { saveDraft, sendMessage } from '../../../src/features/mail/api';
 import { formatApiError, type FormMessage } from '../../../src/lib/api';
 import { routeParam } from '../../../src/lib/param';
 import { useTheme } from '../../../src/theme/use-theme';
@@ -19,12 +19,17 @@ export default function ComposeScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { color } = useTheme();
-  const params = useLocalSearchParams<{ to?: string | string[]; subject?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    to?: string | string[];
+    subject?: string | string[];
+    text?: string | string[];
+  }>();
   const toParam = routeParam(params.to);
   const subjectParam = routeParam(params.subject);
+  const textParam = routeParam(params.text);
   const [to, setTo] = useState(toParam);
   const [subject, setSubject] = useState(subjectParam);
-  const [text, setText] = useState('');
+  const [text, setText] = useState(textParam);
   const [fieldErrors, setFieldErrors] = useState<{ to?: string; subject?: string; text?: string }>(
     {},
   );
@@ -34,8 +39,8 @@ export default function ComposeScreen() {
   useEffect(() => {
     setTo(toParam);
     setSubject(subjectParam);
-    setText('');
-  }, [toParam, subjectParam]);
+    setText(textParam);
+  }, [toParam, subjectParam, textParam]);
 
   async function submit() {
     if (pending) return;
@@ -49,6 +54,25 @@ export default function ComposeScreen() {
     setPending(true);
     try {
       await sendMessage(parsed.data);
+      await queryClient.invalidateQueries({ queryKey: ['mail', 'messages'] });
+      router.back();
+    } catch (error) {
+      setFormError(formatApiError(error));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function onSaveDraft() {
+    if (pending) return;
+    setFormError(null);
+    setPending(true);
+    try {
+      await saveDraft({
+        to: to.trim() ? [to.trim()] : [],
+        subject: subject.trim() || '(No subject)',
+        body: text,
+      });
       await queryClient.invalidateQueries({ queryKey: ['mail', 'messages'] });
       router.back();
     } catch (error) {
@@ -90,6 +114,12 @@ export default function ComposeScreen() {
         />
         {formError ? <FormAlert code={formError.code} message={formError.message} /> : null}
         <Button label="Send message" onPress={() => void submit()} busy={pending} />
+        <Button
+          label="Save draft"
+          variant="text"
+          onPress={() => void onSaveDraft()}
+          busy={pending}
+        />
       </View>
     </Screen>
   );

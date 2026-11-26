@@ -23,6 +23,7 @@ export function DnsWizardPage() {
   useDocumentTitle(domain ? `${domain.name} · DNS Wizard` : 'DNS Wizard');
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pane, setPane] = useState<'list' | 'read'>('list');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const [pending, setPending] = useState(false);
@@ -113,7 +114,7 @@ export function DnsWizardPage() {
       </div>
 
       <div className="card spread">
-        <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
           <QuotaMeter
             label="Domain readiness"
             usedLabel={`${readyCount} of ${domain.checks.length} records verified`}
@@ -123,95 +124,145 @@ export function DnsWizardPage() {
         {note ? <span className="caption muted">{note}</span> : null}
       </div>
 
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Record</th>
-              <th>Type</th>
-              <th>Host / Name</th>
-              <th>Expected Value</th>
-              <th>Copy</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="card-bg" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="panes-two" data-pane={pane} style={{ minHeight: 380 }}>
+          <section className="pane pane-list" aria-label="DNS records">
+            <div className="pane-head pane-head-inline">
+              <h2 className="h3">DNS records ({domain.checks.length})</h2>
+              <span className="caption muted">{readyCount} verified</span>
+            </div>
             {domain.checks.map((check) => (
-              <tr
+              <button
                 key={check.id}
-                onClick={() => setSelectedId(check.id)}
-                style={{ cursor: 'pointer' }}
+                type="button"
+                className="domain-row"
+                aria-selected={check.id === selected.id}
+                onClick={() => {
+                  setSelectedId(check.id);
+                  setPane('read');
+                }}
               >
-                <td className="strong">{check.label}</td>
-                <td className="mono">{check.type}</td>
-                <td className="mono" style={{ whiteSpace: 'nowrap' }}>
-                  {check.host}
-                </td>
-                <td className="mono break" style={{ maxWidth: 340 }}>
-                  {check.value.length > 72 && selected.id !== check.id
-                    ? `${check.value.slice(0, 68)}...`
-                    : check.value}
-                </td>
-                <td>
-                  <button
-                    type="button"
-                    className="icon-btn icon-btn-sm"
-                    aria-label={`Copy ${check.label} value`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void onCopy(check.id, check.value);
-                    }}
-                  >
-                    <Icon icon={copiedId === check.id ? Check : Copy} size={15} />
-                  </button>
-                </td>
-                <td>
-                  <Badge
-                    tone={
-                      check.status === 'ready'
-                        ? 'success'
-                        : check.status === 'fail'
-                          ? 'danger'
-                          : 'warning'
-                    }
-                  >
-                    {check.status === 'ready' ? (
-                      <>
-                        <Icon icon={CheckCircle2} size={12} />
-                        <span>Ready</span>
-                      </>
-                    ) : check.status === 'fail' ? (
-                      <>
-                        <Icon icon={ShieldAlert} size={12} />
-                        <span>Needs record</span>
-                      </>
-                    ) : (
-                      'Waiting'
-                    )}
-                  </Badge>
-                </td>
-              </tr>
+                <div className="stack-1" style={{ minWidth: 0 }}>
+                  <span className="strong">{check.label}</span>
+                  <span className="caption mono muted truncate">
+                    {check.type} · {check.host}
+                  </span>
+                </div>
+                <Badge
+                  tone={
+                    check.status === 'ready'
+                      ? 'success'
+                      : check.status === 'fail'
+                        ? 'danger'
+                        : 'warning'
+                  }
+                >
+                  {check.status === 'ready' ? (
+                    <>
+                      <Icon icon={CheckCircle2} size={12} />
+                      <span>Ready</span>
+                    </>
+                  ) : check.status === 'fail' ? (
+                    <>
+                      <Icon icon={ShieldAlert} size={12} />
+                      <span>Needs record</span>
+                    </>
+                  ) : (
+                    'Waiting'
+                  )}
+                </Badge>
+              </button>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </section>
 
-      <div className="card stack-3">
-        <div className="spread">
-          <h2 className="h3">{selected.label} details</h2>
-          <Badge tone={selected.status === 'ready' ? 'success' : 'warning'}>
-            {selected.type} · {selected.host}
-          </Badge>
+          <article className="pane pane-read" aria-label="Selected DNS record details">
+            <div className="read">
+              <button
+                type="button"
+                className="btn btn-text mobile-only"
+                style={{ justifyContent: 'flex-start', paddingInline: 0 }}
+                onClick={() => setPane('list')}
+              >
+                <Icon icon={ArrowLeft} size={15} />
+                <span>Back to records</span>
+              </button>
+
+              <div className="spread">
+                <div className="stack-1">
+                  <h2 className="h3">{selected.label}</h2>
+                  <span className="caption mono muted">{selected.type} record</span>
+                </div>
+                <Badge
+                  tone={
+                    selected.status === 'ready'
+                      ? 'success'
+                      : selected.status === 'fail'
+                        ? 'danger'
+                        : 'warning'
+                  }
+                >
+                  {selected.status === 'ready'
+                    ? 'Ready'
+                    : selected.status === 'fail'
+                      ? 'Needs record'
+                      : 'Waiting'}
+                </Badge>
+              </div>
+
+              <div className="card stack-3">
+                <div className="stack-1">
+                  <span className="caption muted">Host / Name</span>
+                  <div className="spread" style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+                    <code className="mono break" style={{ flex: 1, minWidth: 0 }}>
+                      {selected.host}
+                    </code>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn-sm"
+                      style={{ flexShrink: 0 }}
+                      aria-label={`Copy ${selected.label} host`}
+                      onClick={() => void onCopy(`${selected.id}-host`, selected.host)}
+                    >
+                      <Icon icon={copiedId === `${selected.id}-host` ? Check : Copy} size={15} />
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  className="stack-1"
+                  style={{ borderTop: '1px solid var(--color-border)', paddingTop: 12 }}
+                >
+                  <span className="caption muted">Expected Value</span>
+                  <div className="spread" style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+                    <code className="mono break" style={{ flex: 1, minWidth: 0 }}>
+                      {selected.value}
+                    </code>
+                    <button
+                      type="button"
+                      className="icon-btn icon-btn-sm"
+                      style={{ flexShrink: 0 }}
+                      aria-label={`Copy ${selected.label} value`}
+                      onClick={() => void onCopy(selected.id, selected.value)}
+                    >
+                      <Icon icon={copiedId === selected.id ? Check : Copy} size={15} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {spec ? (
+                <p className="field-error">
+                  {spec.message || spec.meaning} <span className="mono">{selected.code}</span>
+                  {spec.action ? <span className="muted"> — {spec.action}</span> : null}
+                </p>
+              ) : (
+                <p className="caption status-ready">
+                  This record matches expected DNS authentication.
+                </p>
+              )}
+            </div>
+          </article>
         </div>
-        <p className="mono break">{selected.value}</p>
-        {spec ? (
-          <p className="field-error">
-            {spec.message || spec.meaning} <span className="mono">{selected.code}</span>
-            {spec.action ? <span className="muted"> — {spec.action}</span> : null}
-          </p>
-        ) : (
-          <p className="caption status-ready">This record matches expected DNS authentication.</p>
-        )}
       </div>
     </div>
   );

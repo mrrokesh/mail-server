@@ -6,6 +6,8 @@ All notable changes to MR Rokesh Mail are recorded here. The docs page "What's n
 
 ### Added
 
+- Restored phone list-to-detail pane toggle (`setPane('list' | 'read')`) in Web `DnsWizardPage` (`/admin/domains/:id`).
+- Synced Expo mobile mail app (`mobile/`) with Webmail folders (`Snoozed`, `Trash`), filter pills (`All`, `Unread`, `Starred`), persistent drafts, snooze, star/pin/mute, labels, internal notes, and Reply/Forward support.
 - FAANG-grade UI/UX overhaul across Marketing (`/`, `/pricing`, `/security`), Auth, 3-pane Webmail (bulk actions, star/snooze/archive/trash, quick reply, templates, visual Sieve rules, preferences, EML export), Calendar event pills, Contacts directory, Drive quota & share modal, Tasks/Notes, Booking links, Admin Domains & DNS Wizard, Users & Roles, Billing & GST console, Compliance, SSO/SCIM, Enterprise, White-label Brand, Privacy, Chat, Meet, Docs, and `Ctrl/Cmd+K` Command Palette using `DESIGN.md` tokens.
 - Reseller & Partner Console (`/admin/partner`, `/api/v1/partner/*`) with partner margin tiers (`20%` / `28%` / `35%`), wholesale INR pricing catalog, managed customer tenant provisioning, audited "act as admin" sessions, and REST provisioning webhooks.
 - Platform Operator & Abuse Console (`/operator`, `/api/v1/operator/*`) gated by `OPERATOR_EMAILS` with tenant oversight, sending holds/suspensions, abuse/IP-pool queue triage, and immutable tenant-visible operator access audit logs.

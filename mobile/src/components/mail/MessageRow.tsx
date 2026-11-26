@@ -1,4 +1,5 @@
 import { tokens } from '@mrrokesh/shared';
+import { Pin, Star } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Message } from '../../features/mail/schema';
 import { formatWhen } from '../../features/mail/format';
@@ -45,12 +46,23 @@ export function MessageRow({ message, onPress }: Props) {
       />
       <View style={{ flex: 1, gap: tokens.space[1] }}>
         <View
-          style={{ flexDirection: 'row', justifyContent: 'space-between', gap: tokens.space[3] }}
+          style={{
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: tokens.space[2],
+          }}
         >
           <Text style={[nameStyle, { flex: 1 }]} numberOfLines={1}>
             {message.fromName}
           </Text>
-          <Text style={type.caption}>{when}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: tokens.space[1] }}>
+            {message.pinned ? <Pin size={13} color={color.brand} strokeWidth={1.75} /> : null}
+            {message.starred ? (
+              <Star size={13} color={color.brand} fill={color.brand} strokeWidth={1.75} />
+            ) : null}
+            <Text style={type.caption}>{when}</Text>
+          </View>
         </View>
         <Text style={message.unread ? type.bodyStrong : type.body} numberOfLines={1}>
           {message.subject}
@@ -58,6 +70,25 @@ export function MessageRow({ message, onPress }: Props) {
         <Text style={type.caption} numberOfLines={1}>
           {message.preview}
         </Text>
+        {message.labels.length > 0 ? (
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: tokens.space[1] }}>
+            {message.labels.slice(0, 3).map((label) => (
+              <View
+                key={label}
+                style={{
+                  backgroundColor: color.surface,
+                  borderColor: color.border,
+                  borderWidth: 1,
+                  borderRadius: tokens.radius.pill,
+                  paddingHorizontal: tokens.space[2],
+                  paddingVertical: 1,
+                }}
+              >
+                <Text style={type.caption}>{label}</Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );

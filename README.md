@@ -76,13 +76,13 @@ pnpm dev:web        # Start Vite dev server
 
 ## Pending / External Infrastructure
 
-| Area                                  | Status / Next Step                                                                                                                                                 |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Mail Transport & DNS**              | Boot Stalwart (`MAIL_PLANE=http` + `STALWART_ADMIN_TOKEN`), configure public SMTP / smarthost relay, and verify live DNS (`MX`, `SPF`, `DKIM`, `DMARC`, `MTA-STS`) |
-| **Collaboration & Cache**             | Connect Redis (`REDIS_URL`), LiveKit SFU (`LIVEKIT_URL`), and Collabora Online (`COLLABORA_URL`) containers via `infra/`                                           |
-| **Razorpay Webhooks & Notifications** | Set `RAZORPAY_WEBHOOK_SECRET` for automatic subscription activation on payment, PDF GST invoice generation, and transactional email delivery                       |
-| **Background Workers & AI**           | Wire live LLM key for AI Studio, OAuth IMAP/Google/M365 migration workers, SIEM/Partner webhook async dispatchers, client-side OpenPGP, and dunning cron jobs      |
-| **Expo Mobile (`mobile/`)**           | Run visual verification on Android/iOS emulators, sync latest Webmail flows (drafts, rules, templates, snooze), and wire FCM/APNs push notifications               |
+| Area                                  | Status / Next Step                                                                                                                                                                                                                                                |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Mail Transport & DNS**              | Boot Stalwart (`MAIL_PLANE=http` + `STALWART_ADMIN_TOKEN`), configure public SMTP / smarthost relay, and verify live DNS (`MX`, `SPF`, `DKIM`, `DMARC`, `MTA-STS`)                                                                                                |
+| **Collaboration & Cache**             | Connect Redis (`REDIS_URL`), LiveKit SFU (`LIVEKIT_URL`), and Collabora Online (`COLLABORA_URL`) containers via `infra/`                                                                                                                                          |
+| **Razorpay Webhooks & Notifications** | Set `RAZORPAY_WEBHOOK_SECRET` for automatic subscription activation on payment, PDF GST invoice generation, and transactional email delivery                                                                                                                      |
+| **Background Workers & AI**           | Wire live LLM key for AI Studio, OAuth IMAP/Google/M365 migration workers, SIEM/Partner webhook async dispatchers, client-side OpenPGP, and dunning cron jobs                                                                                                     |
+| **Expo Mobile (`mobile/`)**           | Mail workspace parity implemented (Inbox/Sent/Drafts/Snoozed/Archive/Trash, filter pills, snooze, star/pin/mute, labels, internal notes, reply/forward, drafts); still pending emulator visual verification, Sieve/settings sync, and FCM/APNs push notifications |
 
 ---
 

@@ -9,7 +9,7 @@ import { EmptyState } from '../../../src/components/ui/EmptyState';
 import { SkeletonBlock } from '../../../src/components/ui/SkeletonBlock';
 import { TextField } from '../../../src/components/ui/TextField';
 import { MessageRow } from '../../../src/components/mail/MessageRow';
-import { loadMailbox } from '../../../src/features/mail/api';
+import { loadMailbox, type MailFilter } from '../../../src/features/mail/api';
 import { MAILBOXES, MAILBOX_LABEL, type Mailbox } from '../../../src/features/mail/schema';
 import { formatApiError } from '../../../src/lib/api';
 import { useSession } from '../../../src/lib/session';
@@ -20,8 +20,16 @@ const EMPTY_COPY: Record<Mailbox, string> = {
   inbox: 'Your inbox is empty.',
   sent: 'No sent messages yet.',
   drafts: 'No drafts yet.',
+  snoozed: 'No snoozed messages.',
   archive: 'Nothing is archived.',
+  trash: 'Trash is empty.',
 };
+
+const FILTERS: { id: MailFilter; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'unread', label: 'Unread' },
+  { id: 'starred', label: 'Starred' },
+];
 
 export default function MailInboxScreen() {
   const router = useRouter();
@@ -30,6 +38,7 @@ export default function MailInboxScreen() {
   const type = useType();
   const { status } = useSession();
   const [mailbox, setMailbox] = useState<Mailbox>('inbox');
+  const [filter, setFilter] = useState<MailFilter>('all');
   const [draft, setDraft] = useState('');
   const [q, setQ] = useState('');
 
@@ -39,9 +48,9 @@ export default function MailInboxScreen() {
   }, [draft]);
 
   const list = useQuery({
-    queryKey: ['mail', 'messages', mailbox, q, status],
+    queryKey: ['mail', 'messages', mailbox, filter, q, status],
     enabled: status === 'signedIn',
-    queryFn: () => loadMailbox({ mailbox, q }),
+    queryFn: () => loadMailbox({ mailbox, q, filter }),
   });
 
   const messages = list.data?.messages ?? [];
@@ -189,6 +198,31 @@ export default function MailInboxScreen() {
             );
           })}
         </ScrollView>
+        <View style={{ flexDirection: 'row', gap: tokens.space[2] }}>
+          {FILTERS.map((f) => {
+            const active = filter === f.id;
+            return (
+              <Pressable
+                key={f.id}
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                onPress={() => setFilter(f.id)}
+                style={{
+                  paddingHorizontal: tokens.space[3],
+                  paddingVertical: tokens.space[1],
+                  borderRadius: tokens.radius.pill,
+                  borderWidth: 1,
+                  borderColor: active ? color.brand : color.border,
+                  backgroundColor: active ? color.surface : color.bg,
+                }}
+              >
+                <Text style={[type.caption, { color: active ? color.brand : color.textSecondary }]}>
+                  {f.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
         <TextField label="Search" value={draft} onChangeText={setDraft} autoCapitalize="none" />
       </View>
       <View style={{ flex: 1 }}>{body}</View>
