@@ -2,7 +2,7 @@ import type { PlanTier } from '@mrrokesh/shared';
 import { PLAN_TIERS } from '@mrrokesh/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
-import { resetApiCache, writeToken } from './api';
+import { readToken, resetApiCache, writeToken } from './api';
 
 const USER_KEY = 'mrrokesh.user';
 
@@ -50,6 +50,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setUser(next);
       },
       signOut: () => {
+        const token = readToken();
+        if (token) {
+          void fetch('/api/v1/auth/logout', {
+            method: 'POST',
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            credentials: 'include',
+          }).catch(() => undefined);
+        }
         writeToken(null);
         sessionStorage.removeItem(USER_KEY);
         resetApiCache();

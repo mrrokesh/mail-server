@@ -24,8 +24,8 @@ export default function MessageScreen() {
 
   const message = useQuery({
     queryKey: ['mail', 'message', id, status],
-    enabled: id.length > 0 && (status === 'signedIn' || status === 'preview'),
-    queryFn: () => loadMessage(id, status === 'preview'),
+    enabled: id.length > 0 && status === 'signedIn',
+    queryFn: () => loadMessage(id),
   });
 
   function backToMail() {

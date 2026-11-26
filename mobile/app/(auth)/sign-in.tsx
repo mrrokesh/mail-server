@@ -19,7 +19,7 @@ export default function SignInScreen() {
   const router = useRouter();
   const type = useType();
   const { color } = useTheme();
-  const { signIn, enterPreview } = useSession();
+  const { signIn } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
@@ -94,16 +94,6 @@ export default function SignInScreen() {
             variant="text"
             onPress={() => router.push('/(auth)/sign-up')}
           />
-          {__DEV__ ? (
-            <Button
-              label="Preview the inbox"
-              variant="text"
-              accessibilityHint="Opens a sample inbox without calling the API."
-              onPress={() => {
-                void enterPreview();
-              }}
-            />
-          ) : null}
         </View>
         {__DEV__ ? (
           <Text style={[type.caption, { color: color.textSecondary }]}>API {apiBaseUrl()}</Text>

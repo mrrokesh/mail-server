@@ -34,19 +34,6 @@ export function resetApiCache() {
   resetSource();
 }
 
-function clientFault(status: number): boolean {
-  return (
-    status === 401 ||
-    status === 402 ||
-    status === 403 ||
-    status === 409 ||
-    status === 413 ||
-    status === 422 ||
-    status === 429 ||
-    status === 507
-  );
-}
-
 async function probe(): Promise<'up' | 'down'> {
   if (!reachability) {
     reachability = (async () => {
@@ -70,9 +57,9 @@ async function probe(): Promise<'up' | 'down'> {
   return reachability;
 }
 
-async function request(path: string, init?: RequestInit): Promise<unknown> {
+async function request(path: string, init?: RequestInit, timeoutMs = 4000): Promise<unknown> {
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 4000);
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers = new Headers(init?.headers);
     headers.set('Accept', 'application/json');
@@ -111,55 +98,47 @@ async function request(path: string, init?: RequestInit): Promise<unknown> {
 }
 
 /**
- * Reads a `/api/v1` route. Network failure, a missing route, or an unexpected
- * body returns `fallback` and marks the session as preview data.
- * Auth and validation failures still throw `ApiProblem`.
+ * Live-only read. The `fallback` argument is ignored — preview/sample data is
+ * never invented when the API is down or returns an unexpected body.
  */
 export async function readOrFallback<T>(
   path: string,
   parse: (input: unknown) => T | null,
-  fallback: T,
+  _fallback?: T,
 ): Promise<T> {
-  if ((await probe()) === 'down') {
-    noteSource('preview');
-    return fallback;
-  }
-  try {
-    const parsed = parse(await request(path));
-    if (!parsed) {
-      noteSource('preview');
-      return fallback;
-    }
-    noteSource('live');
-    return parsed;
-  } catch (error) {
-    if (error instanceof ApiProblem && clientFault(error.httpStatus)) throw error;
-    noteSource('preview');
-    return fallback;
-  }
+  void _fallback;
+  if ((await probe()) === 'down') throw new ApiProblem('API-SRV-503', 503);
+  return readLive(path, parse);
 }
 
+export async function readLive<T>(path: string, parse: (input: unknown) => T | null): Promise<T> {
+  const parsed = parse(await request(path));
+  if (parsed == null) throw new ApiProblem('API-SRV-500', 500);
+  noteSource('live');
+  return parsed;
+}
+
+export async function writeLive<T>(
+  path: string,
+  init: RequestInit,
+  parse: (input: unknown) => T | null,
+): Promise<{ data: T; source: 'live' }> {
+  const parsed = parse(await request(path, init, 20000));
+  if (parsed == null) throw new ApiProblem('API-SRV-500', 500);
+  noteSource('live');
+  return { data: parsed, source: 'live' };
+}
+
+/**
+ * Live-only write. The `fallback` factory is ignored — never invent success.
+ */
 export async function writeOrFallback<T>(
   path: string,
   init: RequestInit,
   parse: (input: unknown) => T | null,
-  fallback: () => T,
-): Promise<{ data: T; source: 'live' | 'preview' }> {
-  if ((await probe()) === 'down') {
-    noteSource('preview');
-    return { data: fallback(), source: 'preview' };
-  }
-  try {
-    const parsed = parse(await request(path, init));
-    if (!parsed) {
-      noteSource('preview');
-      return { data: fallback(), source: 'preview' };
-    }
-    noteSource('live');
-    return { data: parsed, source: 'live' };
-  } catch (error) {
-    if (error instanceof ApiProblem && clientFault(error.httpStatus)) throw error;
-    noteSource('preview');
-    return { data: fallback(), source: 'preview' };
-  }
+  _fallback?: () => T,
+): Promise<{ data: T; source: 'live' }> {
+  void _fallback;
+  if ((await probe()) === 'down') throw new ApiProblem('API-SRV-503', 503);
+  return writeLive(path, init, parse);
 }

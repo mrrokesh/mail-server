@@ -11,7 +11,7 @@ export default function AuthLayout() {
     return <View style={{ flex: 1, backgroundColor: color.bg }} />;
   }
 
-  if (status === 'signedIn' || status === 'preview') {
+  if (status === 'signedIn') {
     return <Redirect href="/(tabs)/mail" />;
   }
 

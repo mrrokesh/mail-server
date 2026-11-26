@@ -12,6 +12,7 @@
   "dependencies": {
     "@mrrokesh/shared": "workspace:*",
     "@tanstack/react-query": "^5.67.2",
+    "livekit-client": "^2.25.0",
     "lucide-react": "^1.80.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",

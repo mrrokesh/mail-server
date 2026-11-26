@@ -71,10 +71,6 @@ export function LoginPage() {
         <button className="btn btn-primary" type="submit" disabled={pending}>
           {pending ? 'Signing in' : 'Sign in'}
         </button>
-        <p className="caption muted">
-          When the API is offline, a real email shape and a password of 8 or more characters opens
-          sample mail in this browser.
-        </p>
         <Link className="btn btn-text" to="/forgot-password">
           Forgot password
         </Link>

@@ -1,4 +1,5 @@
 import { ERROR_CODES, tokens } from '@mrrokesh/shared';
+import { useQueryClient } from '@tanstack/react-query';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
@@ -10,15 +11,14 @@ import { fieldMessages, composeFormSchema } from '../../../src/features/auth/for
 import { sendMessage } from '../../../src/features/mail/api';
 import { formatApiError, type FormMessage } from '../../../src/lib/api';
 import { routeParam } from '../../../src/lib/param';
-import { useSession } from '../../../src/lib/session';
 import { useTheme } from '../../../src/theme/use-theme';
 
 const validationCode = ERROR_CODES['API-VAL-001'].code;
 
 export default function ComposeScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { color } = useTheme();
-  const { status } = useSession();
   const params = useLocalSearchParams<{ to?: string | string[]; subject?: string | string[] }>();
   const toParam = routeParam(params.to);
   const subjectParam = routeParam(params.subject);
@@ -46,16 +46,10 @@ export default function ComposeScreen() {
       return;
     }
     setFieldErrors({});
-    if (status === 'preview') {
-      setFormError({
-        code: null,
-        message: 'Preview mode does not send mail. Sign in when the API is available.',
-      });
-      return;
-    }
     setPending(true);
     try {
       await sendMessage(parsed.data);
+      await queryClient.invalidateQueries({ queryKey: ['mail', 'messages'] });
       router.back();
     } catch (error) {
       setFormError(formatApiError(error));

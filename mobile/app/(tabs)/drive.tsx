@@ -2,7 +2,7 @@ import { tokens } from '@mrrokesh/shared';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { HardDrive } from 'lucide-react-native';
-import { Text, View } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { z } from 'zod';
 import { EmptyState } from '../../src/components/ui/EmptyState';
 import { Screen } from '../../src/components/ui/Screen';
@@ -17,6 +17,8 @@ const filesSchema = z.object({
       id: z.string(),
       name: z.string(),
       sizeBytes: z.number(),
+      contentType: z.string().optional(),
+      stored: z.boolean().optional(),
     }),
   ),
 });
@@ -59,15 +61,25 @@ export default function DriveScreen() {
         <Text accessibilityRole="header" style={type.h2}>
           Drive
         </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => {
+            void files.refetch();
+          }}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <Text style={[type.body, { color: color.brand }]}>Refresh</Text>
+        </Pressable>
         {files.isPending ? <Text style={type.body}>Loading files.</Text> : null}
         {files.isError ? <Text style={type.body}>Drive could not be loaded.</Text> : null}
-        {files.isSuccess && rows.length === 0 ? (
-          <Text style={type.body}>No files yet. Add one from the web app.</Text>
-        ) : null}
+        {files.isSuccess && rows.length === 0 ? <Text style={type.body}>No files yet.</Text> : null}
         {rows.map((file) => (
           <View key={file.id} style={{ gap: tokens.space[1] }}>
             <Text style={type.body}>{file.name}</Text>
-            <Text style={type.caption}>{file.sizeBytes} bytes</Text>
+            <Text style={type.caption}>
+              {file.sizeBytes} bytes
+              {file.stored === false ? ' · no bytes stored' : ''}
+            </Text>
           </View>
         ))}
       </View>

@@ -9,7 +9,7 @@ const secureOptions: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
 
-export type SessionMode = 'live' | 'preview';
+export type SessionMode = 'live';
 
 export type StoredSession = {
   accessToken: string;
@@ -71,10 +71,10 @@ export async function readStoredSession(): Promise<StoredSession | null> {
   const accessToken = await getItem(ACCESS_KEY);
   const refreshToken = await getItem(REFRESH_KEY);
   const email = await getItem(EMAIL_KEY);
-  if ((mode !== 'live' && mode !== 'preview') || !accessToken || !refreshToken) {
+  if (mode !== 'live' || !accessToken || !refreshToken) {
     return null;
   }
-  return { accessToken, refreshToken, mode, email };
+  return { accessToken, refreshToken, mode: 'live', email };
 }
 
 export async function writeStoredSession(session: StoredSession): Promise<void> {

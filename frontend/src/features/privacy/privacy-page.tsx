@@ -74,9 +74,9 @@ export function PrivacyPage() {
     <div className="read">
       <h1 className="h1">Privacy</h1>
       <p>
-        Masked aliases are addresses on mask.mrrokesh.mail. That domain is not connected to inbound
-        mail. Keys are stored as the client sends them. This server does not generate keys or
-        encrypt mail.
+        Masked aliases are addresses on mask.rokeshcloud.com. That domain is not connected to
+        inbound mail. Keys are stored as the client sends them. This server does not generate keys
+        or encrypt mail.
       </p>
       {data ? (
         <>

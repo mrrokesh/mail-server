@@ -18,7 +18,7 @@ export default function MoreScreen() {
   const { color } = useTheme();
   const type = useType();
   const { email, status, signOut } = useSession();
-  const account = email ?? (status === 'preview' ? 'Preview session' : 'Signed in');
+  const account = email ?? (status === 'signedIn' ? 'Signed in' : 'Signed out');
 
   return (
     <Screen scroll edges={['top']}>
@@ -31,9 +31,6 @@ export default function MoreScreen() {
           <Text selectable style={type.body}>
             {account}
           </Text>
-          {status === 'preview' ? (
-            <Text style={type.caption}>Sample mail stays on this device.</Text>
-          ) : null}
         </View>
         <View>
           <Pressable

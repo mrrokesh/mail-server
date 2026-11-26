@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 import { Icon } from '../ui/icon';
 import { ThemeToggle } from '../ui/theme-toggle';
-import { useDataSource } from '../../lib/data-source';
 import { useSession } from '../../lib/session';
 
 const LINKS = [
@@ -14,7 +13,6 @@ const LINKS = [
 
 export function MarketingShell() {
   const [open, setOpen] = useState(false);
-  const source = useDataSource();
   const { user } = useSession();
 
   return (
@@ -61,11 +59,6 @@ export function MarketingShell() {
           )}
         </div>
       </header>
-      {source === 'preview' ? (
-        <p className="preview-banner caption">
-          The API did not answer, so this screen is using saved sample data.
-        </p>
-      ) : null}
       <main id="content">
         <Outlet />
       </main>

@@ -1,6 +1,5 @@
-import { ERROR_CODES } from '@mrrokesh/shared';
-import { ApiClientError, apiRequest } from '../../lib/api';
-import { sampleMessages } from './samples';
+import type { ApiClientError} from '../../lib/api';
+import { apiRequest } from '../../lib/api';
 import {
   messageListSchema,
   messageSchema,
@@ -11,7 +10,7 @@ import {
 
 export type MailListResult = {
   messages: Message[];
-  source: 'api' | 'sample';
+  source: 'api';
 };
 
 export function filterMessages(
@@ -49,38 +48,12 @@ export async function listMessages(mailbox: Mailbox): Promise<Message[]> {
 export async function loadMailbox(input: {
   mailbox: Mailbox;
   q: string;
-  preview: boolean;
 }): Promise<MailListResult> {
-  if (input.preview) {
-    return { source: 'sample', messages: filterMessages(sampleMessages, input) };
-  }
-  try {
-    const remote = await listMessages(input.mailbox);
-    return { source: 'api', messages: filterMessages(remote, input) };
-  } catch (error) {
-    if (error instanceof ApiClientError && error.status === 404) {
-      return { source: 'sample', messages: filterMessages(sampleMessages, input) };
-    }
-    throw error;
-  }
+  const remote = await listMessages(input.mailbox);
+  return { source: 'api', messages: filterMessages(remote, input) };
 }
 
-function findSample(id: string): Message | null {
-  return sampleMessages.find((message) => message.id === id) ?? null;
-}
-
-export async function loadMessage(id: string, preview: boolean): Promise<Message> {
-  if (preview || id.startsWith('sample-')) {
-    const sample = findSample(id);
-    if (!sample) {
-      throw new ApiClientError(
-        404,
-        ERROR_CODES['API-RES-404'].code,
-        ERROR_CODES['API-RES-404'].message,
-      );
-    }
-    return sample;
-  }
+export async function loadMessage(id: string): Promise<Message> {
   return apiRequest(`/api/v1/mail/messages/${encodeURIComponent(id)}`, messageSchema, {
     auth: true,
   });
@@ -97,3 +70,5 @@ export async function sendMessage(input: {
     body: input,
   });
 }
+
+export type { ApiClientError };

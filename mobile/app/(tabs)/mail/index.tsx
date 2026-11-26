@@ -40,12 +40,12 @@ export default function MailInboxScreen() {
 
   const list = useQuery({
     queryKey: ['mail', 'messages', mailbox, q, status],
-    enabled: status === 'signedIn' || status === 'preview',
-    queryFn: () => loadMailbox({ mailbox, q, preview: status === 'preview' }),
+    enabled: status === 'signedIn',
+    queryFn: () => loadMailbox({ mailbox, q }),
   });
 
   const messages = list.data?.messages ?? [];
-  const showWrite = list.isSuccess && messages.length > 0;
+  const showWrite = status === 'signedIn';
 
   function openCompose() {
     router.push('/(tabs)/mail/compose');
@@ -158,9 +158,6 @@ export default function MailInboxScreen() {
             </Pressable>
           ) : null}
         </View>
-        {list.data?.source === 'sample' ? (
-          <Text style={type.caption}>Showing a sample inbox until mail is connected.</Text>
-        ) : null}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}

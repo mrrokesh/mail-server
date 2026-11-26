@@ -1,5 +1,9 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { z } from 'zod';
-import { ModulePage } from '../modules/module-page';
+import { readLive, writeLive } from '../../lib/api';
+import { useDocumentTitle } from '../../lib/use-document-title';
 
 const docSchema = z.object({
   id: z.string(),
@@ -9,42 +13,60 @@ const docSchema = z.object({
   version: z.number(),
 });
 
-type DocItem = z.infer<typeof docSchema>;
-
-function parseDocs(input: unknown): DocItem[] | null {
-  const parsed = z.object({ docs: z.array(docSchema) }).safeParse(input);
-  return parsed.success ? parsed.data.docs : null;
-}
-
 export function DocumentsPage() {
-  return (
-    <ModulePage
-      title="Docs"
-      blurb="Collabora is not running here. Opening a file returns a WOPI stub the browser can show."
-      queryKey={['docs']}
-      listPath="/docs"
-      createPath="/docs"
-      createLabel="New document"
-      sheetTitle="New document"
-      empty="No documents yet."
-      fields={[{ name: 'name', label: 'Name' }]}
-      parseList={parseDocs}
-      parseItem={(input) => {
+  useDocumentTitle('Documents');
+  const queryClient = useQueryClient();
+  const [name, setName] = useState('');
+  const docs = useQuery({
+    queryKey: ['docs'],
+    queryFn: () =>
+      readLive('/docs', (input) => {
+        const parsed = z.object({ docs: z.array(docSchema) }).safeParse(input);
+        return parsed.success ? parsed.data.docs : null;
+      }),
+  });
+
+  async function createDocument() {
+    const title = name.trim();
+    if (!title) return;
+    await writeLive(
+      '/docs',
+      { method: 'POST', body: JSON.stringify({ name: title, kind: 'document' }) },
+      (input) => {
         const parsed = docSchema.safeParse(input);
         return parsed.success ? parsed.data : null;
-      }}
-      titleOf={(item) => item.name}
-      linesOf={(item) => [
-        item.kind,
-        item.template ? `Template ${item.template}` : 'Blank',
-        `Version ${item.version}`,
-        'WOPI stub',
-      ]}
-      bodyOf={(values) => {
-        const name = values.name?.trim() ?? '';
-        if (!name) return null;
-        return { name, kind: 'document' };
-      }}
-    />
+      },
+    );
+    setName('');
+    await queryClient.invalidateQueries({ queryKey: ['docs'] });
+  }
+
+  return (
+    <section className="billing-grid">
+      <h1 className="h2">Documents</h1>
+      <p className="muted">Opens in Collabora on this machine.</p>
+      <form
+        className="cluster"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void createDocument();
+        }}
+      >
+        <input
+          className="input"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Document name"
+        />
+        <button className="btn btn-primary" type="submit">
+          New document
+        </button>
+      </form>
+      {(docs.data ?? []).map((doc) => (
+        <Link key={doc.id} className="break" to={`/documents/${doc.id}`}>
+          {doc.name}
+        </Link>
+      ))}
+    </section>
   );
 }

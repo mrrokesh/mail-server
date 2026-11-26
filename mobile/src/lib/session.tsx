@@ -16,7 +16,7 @@ import {
   writeStoredSession,
 } from './secure-session';
 
-export type SessionStatus = 'loading' | 'signedOut' | 'preview' | 'signedIn';
+export type SessionStatus = 'loading' | 'signedOut' | 'signedIn';
 
 type SessionValue = {
   status: SessionStatus;
@@ -30,7 +30,6 @@ type SessionValue = {
     password: string;
   }) => Promise<'signed-in' | 'created'>;
   requestPasswordReset: (email: string) => Promise<void>;
-  enterPreview: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -60,13 +59,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     void (async () => {
       const stored = await readStoredSession();
       if (cancelled) return;
-      if (!stored || (stored.mode === 'preview' && !__DEV__)) {
+      if (!stored || stored.mode !== 'live') {
         if (stored) await clearStoredSession();
         else setStatus('signedOut');
         return;
       }
       setEmail(stored.email);
-      setStatus(stored.mode === 'preview' ? 'preview' : 'signedIn');
+      setStatus('signedIn');
     })();
 
     return () => {
@@ -140,21 +139,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     await requestPasswordResetCall(account.trim().toLowerCase());
   }, []);
 
-  const enterPreview = useCallback(async () => {
-    if (!__DEV__) return;
-    challengeToken = null;
-    pendingEmail = null;
-    setChallengeReady(false);
-    await writeStoredSession({
-      accessToken: 'preview',
-      refreshToken: 'preview',
-      mode: 'preview',
-      email: null,
-    });
-    setEmail(null);
-    setStatus('preview');
-  }, []);
-
   const signOut = useCallback(async () => {
     const current = await readStoredSession();
     if (current?.mode === 'live') {
@@ -178,20 +162,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       verifyMfa,
       signUp,
       requestPasswordReset,
-      enterPreview,
       signOut,
     }),
-    [
-      status,
-      email,
-      challengeReady,
-      signIn,
-      verifyMfa,
-      signUp,
-      requestPasswordReset,
-      enterPreview,
-      signOut,
-    ],
+    [status, email, challengeReady, signIn, verifyMfa, signUp, requestPasswordReset, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

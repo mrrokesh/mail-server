@@ -15,7 +15,9 @@ import { CampaignsPage } from '../features/campaigns/campaigns-page';
 import { ChatPage } from '../features/chat/chat-page';
 import { BookingPage } from '../features/booking/booking-page';
 import { PublicBookingPage } from '../features/booking/public-booking-page';
+import { BillingPage } from '../features/billing/billing-page';
 import { DocumentsPage } from '../features/docs/documents-page';
+import { EditorPage } from '../features/docs/editor-page';
 import { DrivePage } from '../features/drive/drive-page';
 import { MeetPage } from '../features/meet/meet-page';
 import { PrivacyPage } from '../features/privacy/privacy-page';
@@ -57,7 +59,9 @@ export function AppRoutes() {
           <Route path="contacts" element={<ContactsPage />} />
           <Route path="drive" element={<DrivePage />} />
           <Route path="documents" element={<DocumentsPage />} />
+          <Route path="documents/:documentId" element={<EditorPage />} />
           <Route path="meet" element={<MeetPage />} />
+          <Route path="billing" element={<BillingPage />} />
           <Route path="booking" element={<BookingPage />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="notes" element={<NotesPage />} />

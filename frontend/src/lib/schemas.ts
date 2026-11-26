@@ -234,20 +234,37 @@ export function parsePlans(input: unknown): PlanCatalog | null {
 }
 
 export function parseAuth(input: unknown): AuthResult | null {
+  const root = input && typeof input === 'object' ? (input as { session?: unknown }) : null;
+  const body = root?.session && typeof root.session === 'object' ? root.session : input;
   const parsed = z
     .object({
       accessToken: z.string().min(1),
+      organization: z.object({ name: z.string() }).optional(),
       user: z.object({
         id: z.string(),
-        name: z.string(),
+        name: z.string().optional(),
+        fullName: z.string().optional(),
         email: z.string().email(),
-        organization: z.string(),
-        plan: planIdSchema,
+        organization: z.string().optional(),
+        plan: planIdSchema.optional(),
         role: z.string(),
       }),
     })
-    .safeParse(input);
-  return parsed.success ? parsed.data : null;
+    .safeParse(body);
+  if (!parsed.success) return null;
+  const name = parsed.data.user.name ?? parsed.data.user.fullName;
+  if (!name) return null;
+  return {
+    accessToken: parsed.data.accessToken,
+    user: {
+      id: parsed.data.user.id,
+      name,
+      email: parsed.data.user.email,
+      organization: parsed.data.user.organization ?? parsed.data.organization?.name ?? 'Workspace',
+      plan: parsed.data.user.plan ?? 'free',
+      role: parsed.data.user.role,
+    },
+  };
 }
 
 export function parseThread(input: unknown): MailThread | null {

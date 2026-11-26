@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft } from 'lucide-react';
+import { Archive, ChevronLeft, FileEdit, Inbox, Send, ShieldAlert } from 'lucide-react';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
@@ -7,10 +7,8 @@ import { Icon } from '../../components/ui/icon';
 import { Sheet } from '../../components/ui/sheet';
 import { SkeletonLines } from '../../components/ui/skeleton';
 import { ErrorNote, Field, TextArea } from '../../components/ui/field';
-import { readOrFallback, writeOrFallback, ApiProblem } from '../../lib/api';
+import { readLive, writeLive, ApiProblem } from '../../lib/api';
 import { formatWhen } from '../../lib/dates';
-import { textToHtml } from '../../lib/email-html';
-import { MOCK_THREADS } from '../../lib/mock-data';
 import { useSession } from '../../lib/session';
 import {
   FOLDERS,
@@ -30,6 +28,14 @@ const FOLDER_LABEL: Record<FolderId, string> = {
   archive: 'Archive',
   spam: 'Spam',
 };
+
+const FOLDER_ICON = {
+  inbox: Inbox,
+  sent: Send,
+  drafts: FileEdit,
+  archive: Archive,
+  spam: ShieldAlert,
+} as const;
 
 const composeSchema = z.object({
   to: z.string().trim().email(),
@@ -60,7 +66,7 @@ export function MailPage() {
   const requested = params.get('thread');
   const threads = useQuery({
     queryKey: ['mail', 'threads'],
-    queryFn: () => readOrFallback('/mail/threads', parseThreads, MOCK_THREADS),
+    queryFn: () => readLive('/mail/threads', parseThreads),
     staleTime: 5 * 60 * 1000,
   });
   const [folder, setFolder] = useState<FolderId>('inbox');
@@ -150,25 +156,11 @@ export function MailPage() {
     if (!user) return;
     setPending(true);
     setCode(null);
-    const local: MailThread = {
-      id: `sent_${crypto.randomUUID()}`,
-      folder: 'sent',
-      subject: parsed.data.subject,
-      fromName: user.name,
-      fromEmail: user.email,
-      toEmail: parsed.data.to,
-      preview: parsed.data.text.slice(0, 120),
-      bodyHtml: textToHtml(parsed.data.text),
-      receivedAt: new Date().toISOString(),
-      unread: false,
-      hasRemoteImages: false,
-    };
     try {
-      const result = await writeOrFallback(
+      const result = await writeLive(
         '/mail/messages',
         { method: 'POST', body: JSON.stringify(parsed.data) },
         parseThread,
-        () => local,
       );
       queryClient.setQueryData<MailThread[]>(['mail', 'threads'], (current = []) => [
         result.data,
@@ -198,9 +190,13 @@ export function MailPage() {
     <div className="panes" data-pane={pane}>
       <h1 className="visually-hidden">Mail</h1>
       <section className="pane pane-nav" aria-label="Folders">
-        <div className="pane-head">
-          <p className="strong">Folders</p>
-        </div>
+        <button
+          type="button"
+          className="btn btn-primary folder-compose"
+          onClick={() => setComposeOpen(true)}
+        >
+          Compose
+        </button>
         {counts.map((item) => (
           <button
             key={item.id}
@@ -212,7 +208,10 @@ export function MailPage() {
               setPane('list');
             }}
           >
-            <span>{item.label}</span>
+            <span className="cluster">
+              <Icon icon={FOLDER_ICON[item.id]} />
+              <span>{item.label}</span>
+            </span>
             <span className="caption muted">{item.count}</span>
           </button>
         ))}
@@ -238,11 +237,7 @@ export function MailPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <button type="button" className="btn btn-primary" onClick={() => setComposeOpen(true)}>
-            Compose message
-          </button>
         </div>
-        <p className="caption muted pane-note">J and K move. C composes.</p>
         {threads.isPending ? <SkeletonLines /> : null}
         {!threads.isPending && visible.length === 0 ? (
           <p className="read muted">No messages in this view.</p>
@@ -293,7 +288,13 @@ export function MailPage() {
             <MessageFrame html={selected.bodyHtml} allowImages={showImages} />
           </div>
         ) : (
-          <p className="read muted">Select a message to read it.</p>
+          <div className="empty-read">
+            <p className="h3">{FOLDER_LABEL[folder]} is clear</p>
+            <p className="muted">Messages you receive will stay in this pane.</p>
+            <button type="button" className="btn btn-primary" onClick={() => setComposeOpen(true)}>
+              Compose message
+            </button>
+          </div>
         )}
       </article>
       <Sheet open={composeOpen} title="New message" onClose={() => setComposeOpen(false)}>
