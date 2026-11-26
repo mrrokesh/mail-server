@@ -1,76 +1,93 @@
 ﻿# MR Rokesh Mail
 
-Custom-domain business email and productivity suite (web + API + Expo). One Fastify control plane for web and mobile. Visual system is locked in [`DESIGN.md`](DESIGN.md). Feature catalogue is [`PROJECT_BRIEF.md`](PROJECT_BRIEF.md). Launch mail domain target: **rokeshcloud.com**.
+Custom-domain business email, productivity suite, and multi-tenant control plane (`web` + `API` + `Expo mobile`). Built on one Fastify control plane (`@mrrokesh/backend`), a React + Vite frontend (`@mrrokesh/frontend`), shared design tokens and error codes (`@mrrokesh/shared`), and an Expo mobile client (`@mrrokesh/mobile`).
 
-## Layout
+Visual tokens are locked in [`DESIGN.md`](DESIGN.md) (`Electric Indigo` `#5B5BF7` light / `#7B7BFF` dark, `Satoshi` headings + `Inter` UI, 4pt spacing scale). Full product specifications live in [`prompts/briefs/PROJECT_BRIEF.md`](prompts/briefs/PROJECT_BRIEF.md). Launch mail domain target: **`rokeshcloud.com`**.
 
-| Path               | Role                                                                                                       |
-| ------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `frontend/`        | React + Vite. Marketing, webmail, admin, settings, billing                                                 |
-| `backend/`         | Fastify API: auth, tenants, mail proxy, billing, Drive/Docs/Meet, chat, campaigns                          |
-| `mobile/`          | Expo Router (Mail, Calendar, Contacts, Drive, More)                                                        |
-| `packages/shared/` | Error codes, design tokens, plan tiers, health schema                                                      |
-| `infra/`           | Docker Compose: Postgres, Redis, Stalwart, LiveKit, Collabora (`docker-compose.cloud.yml` for public SMTP) |
-| `docs/`            | Local run, screens/APIs, what you can do                                                                   |
-| `scripts/`         | Helpers (e.g. DNS checklist)                                                                               |
-| `prompts/`         | Planning archive — do not treat as runtime                                                                 |
+---
 
-## Quick start
+## Repository Layout
 
-Node.js 22+, pnpm 10.18.3, Docker Compose v2.
+| Path               | Role                                                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `frontend/`        | React + Vite SPA covering Marketing, Docs, Auth, Webmail & Suite, Customer Billing, Tenant Admin, Partner Console, and Operator Console                                              |
+| `backend/`         | Fastify REST API + JMAP/Stalwart adapter: auth, tenant isolation, DNS onboarding, GST billing, Razorpay Checkout, Webmail workspace APIs, v1/v2 modules, Partner & Operator consoles |
+| `mobile/`          | Expo Router React Native app (`Mail`, `Calendar`, `Contacts`, `Drive`, `Chat`, `More`, Auth)                                                                                         |
+| `packages/shared/` | Shared plan tiers, canonical error code registry (`API-*`), CSS design tokens, and shared TypeScript types                                                                           |
+| `infra/`           | Docker Compose definitions for PostgreSQL 16, Redis 7, Stalwart Mail Server, LiveKit, and Collabora Online                                                                           |
+| `docs/`            | User guides, local dev setup ([`docs/local-dev.md`](docs/local-dev.md)), screen/API contract ([`docs/screens-and-apis.md`](docs/screens-and-apis.md)), and error code reference      |
+| `prompts/`         | Original multi-AI research notes, product briefs, and architecture blueprints (archive only — not runtime code)                                                                      |
+
+---
+
+## Portals & Implemented Capabilities
+
+- **Public Marketing, Pricing & Docs:** Landing showcase (`/`), INR seat estimator with 18% GST (`/pricing`), security overview (`/security`), customer docs (`/docs/*`), and public scheduling pages (`/book/:slug`).
+- **Authentication:** Signup, sign-in, password reset, MFA (TOTP), passkeys, and per-account app passwords (`/login`, `/signup`, `/forgot-password`).
+- **3-Pane Webmail & Productivity Suite:** Compose, persistent drafts, saved templates, visual Sieve rule compiler, signatures/OOO preferences, quick reply, bulk move, star/snooze/archive/trash, `.eml` export, sandboxed reader, `/.well-known/mta-sts.txt`, and `/mail/config-v1.1.xml` Autoconfig — plus Calendar, Contacts, Drive (quota & password-protected shares), Tasks/Notes, Chat (`mrrokesh-chat`), Docs, Meet, Booking, AI Studio, Privacy aliases, and Campaigns.
+- **Tenant Admin & GST Billing:** Domains & 6-record DNS Wizard (`Ownership`, `MX`, `SPF`, `DKIM`, `DMARC`, `MTA-STS`), Users & Roles, Compliance/Audit logs, SSO/SCIM, Enterprise settings (BYOK, SIEM targets, dedicated IP flag, simulations), White-label Login Brand, and Billing with CGST/SGST vs. IGST math & Razorpay Checkout (`/billing`).
+- **Reseller / Partner Console (`/admin/partner`):** Partner margin tiers (`20%` / `28%` / `35%`), wholesale INR pricing catalog, managed child-tenant provisioning, audited support handoffs (`act-as-admin`), and HTTPS provisioning webhooks.
+- **Platform Operator & Abuse Console (`/operator`):** Strictly gated by `OPERATOR_EMAILS` with cross-tenant directory (`listAllOrgs`), outbound sending pause/resume, tenant suspension, abuse/IP-pool queue triage, and mandatory tenant-visible `operator.inspect` / `operator.moderation` audit entries.
+- **Storage Persistence:** Supports both standalone dev mode (`CONTROL_STORE=memory`) and PostgreSQL persistence (`CONTROL_STORE=postgres` via migrations `0001`–`0005`, including `org_workspace_extensions`).
+
+---
+
+## Quick Start
+
+**Prerequisites:** Node.js `>= 22`, pnpm `10.18.3`, and PostgreSQL 16 (or `CONTROL_STORE=memory` for zero-dependency dev).
 
 ```bash
 pnpm install
-cp .env.example .env   # replace every CHANGE_ME
-docker compose --env-file .env -f infra/docker-compose.yml up -d
-pnpm --filter @mrrokesh/backend db:migrate
-pnpm dev:api           # http://127.0.0.1:4000
-pnpm dev:web           # http://127.0.0.1:5173
+cp .env.example .env   # replace every CHANGE_ME secret and configure DB/keys
 ```
 
-Health: `GET /api/v1/health` (reports `mailPlane` and whether Razorpay keys are loaded).
+### Option A: Using PostgreSQL (`CONTROL_STORE=postgres`)
 
-Local run details: [docs/local-dev.md](docs/local-dev.md). DNS records for outbound/inbound mail: `pnpm dns:checklist`.
+```bash
+# Either start local infra via Docker Compose:
+docker compose --env-file .env -f infra/docker-compose.yml up -d
 
-### Demo account (local)
+# Or set DATABASE_URL & APP_DATABASE_URL in .env to an existing managed Postgres instance,
+# apply migrations 0001..0005, then boot API + Web:
+pnpm --filter @mrrokesh/backend db:migrate
+pnpm dev:api           # defaults to http://127.0.0.1:4000 (configurable via API_PORT)
+pnpm dev:web           # http://127.0.0.1:5173 (proxies /api to API_PORT from .env)
+```
 
-After Stalwart/API are up: `demo@mrrokesh.test` / `DemoMail123` (or create a workspace at `/signup`).
+### Option B: Zero-Dependency In-Memory Dev (`CONTROL_STORE=memory`)
+
+Set `CONTROL_STORE=memory`, `MAIL_PLANE=mock`, and blank `REDIS_URL=` in `.env`, then run `pnpm dev:api` and `pnpm dev:web`. Visit `/signup` to create a tenant workspace (add your signup email to `OPERATOR_EMAILS` in `.env` to access `/operator`).
+
+---
 
 ## Scripts
 
 ```bash
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm dev:web
-pnpm dev:api
-pnpm dns:checklist
+pnpm typecheck      # Type-check all workspaces (shared, backend, frontend, mobile)
+pnpm lint           # ESLint across repository
+pnpm build          # Production builds across workspaces
+pnpm test           # Shared (7) + Backend integration test suites (35)
+pnpm format:check   # Prettier formatting check
+pnpm dev:api        # Start Fastify control-plane API (tsx watch)
+pnpm dev:web        # Start Vite dev server
 ```
 
-## What works locally (live API, no sample fallbacks)
+---
 
-- Auth (JWT), MFA setup UI (`/settings`), passkeys (browser), app passwords (paid IMAP)
-- Webmail: folders, move/flag, drafts, Cc, attachments, threading, trash destroy
-- Calendar / contacts (Postgres), India 2026 gazetted holidays
-- Drive bytes, Collabora Docs (WOPI), LiveKit Meet
-- Billing: Razorpay Checkout when `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` are set; GST invoices
-- Chat, campaigns send via mail plane, privacy aliases, SIEM webhook POST
-- Marketing home + pricing; Expo mail/calendar/contacts/drive
+## Pending / External Infrastructure
 
-Set `CONTROL_STORE=postgres` and `MAIL_PLANE=http` with a real `STALWART_ADMIN_TOKEN` so mail uses Stalwart JMAP. Compose binds Stalwart to loopback (`127.0.0.1:25`, `:8081`). Internet receive needs public binds ([`infra/docker-compose.cloud.yml`](infra/docker-compose.cloud.yml)) plus MX for **rokeshcloud.com**.
+| Area                                  | Status / Next Step                                                                                                                                                 |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Mail Transport & DNS**              | Boot Stalwart (`MAIL_PLANE=http` + `STALWART_ADMIN_TOKEN`), configure public SMTP / smarthost relay, and verify live DNS (`MX`, `SPF`, `DKIM`, `DMARC`, `MTA-STS`) |
+| **Collaboration & Cache**             | Connect Redis (`REDIS_URL`), LiveKit SFU (`LIVEKIT_URL`), and Collabora Online (`COLLABORA_URL`) containers via `infra/`                                           |
+| **Razorpay Webhooks & Notifications** | Set `RAZORPAY_WEBHOOK_SECRET` for automatic subscription activation on payment, PDF GST invoice generation, and transactional email delivery                       |
+| **Background Workers & AI**           | Wire live LLM key for AI Studio, OAuth IMAP/Google/M365 migration workers, SIEM/Partner webhook async dispatchers, client-side OpenPGP, and dunning cron jobs      |
+| **Expo Mobile (`mobile/`)**           | Run visual verification on Android/iOS emulators, sync latest Webmail flows (drafts, rules, templates, snooze), and wire FCM/APNs push notifications               |
 
-## Still pending / external
+---
 
-| Item                        | Notes                                                                          |
-| --------------------------- | ------------------------------------------------------------------------------ |
-| Public SMTP on Rokesh Cloud | Port 25 + GitHub App access to this repo for deploy                            |
-| DNS                         | MX/SPF/DKIM for `rokeshcloud.com` (`pnpm dns:checklist`)                       |
-| Razorpay webhook secret     | Auto-activate plans after Checkout                                             |
-| CalDAV / CardDAV / iMIP     | Calendar sync and invite mail                                                  |
-| Full brief remainder        | Sieve UI, ActiveSync, Hindi UI, migration tools, partner console, desktop sync |
+## Licence & Security Rules
 
-Screens and routes: [docs/screens-and-apis.md](docs/screens-and-apis.md).
-
-## Licence / rules
-
-Do not copy AGPL into this repo. Stalwart Community runs unmodified. Secrets stay in `.env` (gitignored); only `.env.example` is committed.
+- Never copy AGPL source into this repository; Stalwart runs unmodified as a separate container service.
+- Never commit `.env` or live credentials — `.env` is gitignored and only `.env.example` belongs in Git.
+- Every bugfix or feature PR updates [`docs/screens-and-apis.md`](docs/screens-and-apis.md) / [`docs/`](docs/) and [`CHANGELOG.md`](CHANGELOG.md).
