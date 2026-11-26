@@ -287,6 +287,7 @@ export async function createAlias(
   const sync = await deps.mail.upsertAlias({
     organizationId: tenant.org.id,
     principalId: mailbox.stalwartPrincipalId,
+    address: mailbox.address,
     alias: aliasAddress,
   });
   await writeAudit(deps.store, {
@@ -325,6 +326,7 @@ export async function removeAlias(
   await deps.mail.removeAlias({
     organizationId: tenant.org.id,
     principalId: mailbox.stalwartPrincipalId,
+    address: mailbox.address,
     alias: alias.aliasAddress,
   });
 }

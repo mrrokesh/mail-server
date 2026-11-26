@@ -542,15 +542,21 @@ export async function bookSlot(
   };
   deps.workspace.addAppointment(row);
   const notice = `${input.name}, ${input.start} is reserved for ${page.title}.`;
-  await deps.mail.submitMessage({
-    organizationId: page.organizationId,
-    principalId: page.ownerUserId,
-    from: 'booking@rokeshcloud.com',
-    to: [input.email],
-    subject: `Booked: ${page.title}`,
-    text: notice,
-    sizeBytes: Buffer.byteLength(notice),
-  });
+  // The confirmation is best effort: the slot is already reserved if the mail engine is down.
+  try {
+    await deps.mail.submitMessage({
+      organizationId: page.organizationId,
+      principalId: page.ownerUserId,
+      mailboxAddress: 'booking@rokeshcloud.com',
+      from: 'booking@rokeshcloud.com',
+      to: [input.email],
+      subject: `Booked: ${page.title}`,
+      text: notice,
+      sizeBytes: Buffer.byteLength(notice),
+    });
+  } catch {
+    // Mail engine down: the booking stands and the owner still sees it in Booking.
+  }
   await writeAudit(deps.store, {
     at: deps.now(),
     organizationId: page.organizationId,

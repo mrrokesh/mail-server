@@ -964,7 +964,7 @@ test('stalwart http adapter stays pending when the engine is down', async () => 
   const result = await plane.ensureTenant({
     organizationId: 'org',
     stalwartTenantId: 'st_org',
-    name: 'Acme',
+    name: 'acme.in',
   });
   assert.equal(result.syncStatus, 'pending');
 });

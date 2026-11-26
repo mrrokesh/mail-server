@@ -90,6 +90,9 @@ Ports are bound to loopback so a laptop does not accept mail from the internet. 
 2. Open `http://127.0.0.1:8081/admin` and finish the wizard. Set the hostname yourself. The container id is not a valid hostname.
 3. For storage, choose PostgreSQL. Host `postgres`, database `stalwart`, user `stalwart`, password `STALWART_DB_PASSWORD`. The same shape is written in `infra/stalwart/datastore.stub.json`. Do not mount that stub over `/etc/stalwart`. An empty volume is what lets the wizard run.
 4. Restart the Stalwart service so it leaves bootstrap mode.
+5. Connect the API: set `MAIL_PLANE=http`, `STALWART_API_URL=http://127.0.0.1:8081`, `STALWART_ADMIN_USER` (default `admin`) and `STALWART_ADMIN_TOKEN` to that admin's **password**. An API key will not work, because the API reads and sends mail as each mailbox owner with Stalwart's master-user login (`owner@domain%admin`), which only accepts a password. The admin account needs the `impersonate` permission (the built-in administrator role has it).
+
+The free Community edition is enough. The API creates domains and accounts in Stalwart and keeps each organization apart itself, so Stalwart's Enterprise multi-tenancy is not needed. If the API cannot reach Stalwart, new mailboxes and aliases show `syncStatus: "pending"` and sending fails with `API-SRV-503` instead of pretending the mail went out.
 
 `infra/redis/redis.conf` is a stub. The compose service is what actually starts Redis.
 

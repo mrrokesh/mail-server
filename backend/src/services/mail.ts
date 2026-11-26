@@ -113,19 +113,22 @@ export async function submitMessage(
   const submitted = await deps.mail.submitMessage({
     organizationId: tenant.org.id,
     principalId: mailbox.stalwartPrincipalId,
+    mailboxAddress: mailbox.address,
     from,
     to: recipients,
     subject: input.subject,
     text: input.text,
     sizeBytes,
   });
-  const localBoxes = await deps.store.listMailboxes(tenant.org.id);
+  // A real engine delivers to local recipients over SMTP; the in-memory one needs copies.
+  const localBoxes = deps.mail.deliversMail ? [] : await deps.store.listMailboxes(tenant.org.id);
   for (const recipient of recipients) {
     const target = localBoxes.find((row) => row.address === recipient);
     if (!target || target.id === mailbox.id) continue;
     await deps.mail.submitMessage({
       organizationId: tenant.org.id,
       principalId: target.stalwartPrincipalId,
+      mailboxAddress: target.address,
       from,
       to: recipients,
       subject: input.subject,
@@ -170,7 +173,11 @@ export async function listMailboxMessages(
   ) {
     throw new ApiError('API-AUTH-003');
   }
-  const rows = await deps.mail.listMessages(tenant.org.id, mailbox.stalwartPrincipalId);
+  const rows = await deps.mail.listMessages(
+    tenant.org.id,
+    mailbox.stalwartPrincipalId,
+    mailbox.address,
+  );
   return rows.map((row) => ({
     id: row.id,
     from: row.from,
@@ -277,10 +284,14 @@ export async function listClientMessages(
   const states = new Map(deps.workspace.listMailStates(tenant.org.id).map((s) => [s.messageId, s]));
   const messages = [];
   for (const mailbox of targets) {
-    const rows = await deps.mail.listMessages(tenant.org.id, mailbox.stalwartPrincipalId);
+    const rows = await deps.mail.listMessages(
+      tenant.org.id,
+      mailbox.stalwartPrincipalId,
+      mailbox.address,
+    );
     for (const row of rows) {
       const defaultFolder: ClientFolder =
-        row.from.toLowerCase() === mailbox.address ? 'sent' : 'inbox';
+        row.folder ?? (row.from.toLowerCase() === mailbox.address ? 'sent' : 'inbox');
       const state = states.get(row.id);
       const effectiveFolder = state?.folder ?? defaultFolder;
       if (filter.mailbox && effectiveFolder !== filter.mailbox) continue;

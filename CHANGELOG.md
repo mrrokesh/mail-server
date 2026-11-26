@@ -4,6 +4,16 @@ All notable changes to MR Rokesh Mail are recorded here. The docs page "What's n
 
 ## [Unreleased]
 
+### Fixed
+
+- Stalwart adapter (`backend/src/mail/http-stalwart.ts`) now reads and sends mail as each mailbox owner (master-user login `owner%admin`) instead of the shared admin mailbox, so one user can no longer see or send from another user's or another organization's mail.
+- Sending uses the owner's JMAP identity (`identityId`), files the copy in Sent, and returns `API-SRV-503` when Stalwart refuses, instead of reporting success.
+- Accounts are created with the real Stalwart `domainId`; aliases are added and removed by position on the account (`aliases/<n>`), so alias removal works.
+- Management calls only report `synced` when Stalwart confirms `created`/`updated`; JMAP `error` and `notCreated` answers stay `pending`.
+- Webmail reads every page of the mailbox (up to 1,000 messages) and takes Inbox, Sent, Drafts, Archive, Spam and Trash from Stalwart folder roles.
+- With a real engine, local recipients are delivered by Stalwart over SMTP; the API no longer adds a duplicate copy to their mailbox.
+- Signup no longer creates a stray `rokeshcloud.com` domain in Stalwart from the organization name.
+
 ### Added
 
 - Restored phone list-to-detail pane toggle (`setPane('list' | 'read')`) in Web `DnsWizardPage` (`/admin/domains/:id`).

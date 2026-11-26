@@ -3,6 +3,7 @@ import type { MailPlane, StoredMessage } from './plane';
 
 /** In-process mail plane used when Stalwart is not running. */
 export class MockMailPlane implements MailPlane {
+  readonly deliversMail = false;
   readonly tenants = new Map<string, { stalwartTenantId: string; name: string }>();
   readonly principals = new Map<string, { organizationId: string; address: string }>();
   readonly aliases = new Map<string, Set<string>>();
@@ -69,7 +70,11 @@ export class MockMailPlane implements MailPlane {
     return { id };
   }
 
-  async listMessages(organizationId: string, principalId: string): Promise<StoredMessage[]> {
+  async listMessages(
+    organizationId: string,
+    principalId: string,
+    _address?: string,
+  ): Promise<StoredMessage[]> {
     return this.messages.filter(
       (message) => message.organizationId === organizationId && message.principalId === principalId,
     );
