@@ -125,5 +125,50 @@ test('mail workspace features: drafts, templates, rules, preferences, admin over
   assert.equal(autoconfig.statusCode, 200);
   assert.match(autoconfig.body, /<domain>northwind\.example<\/domain>/);
 
+  // Primary mailbox auto-provisioned on signup and repaired on login
+  const ownerMailboxes = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mailboxes',
+    headers,
+  });
+  assert.equal(ownerMailboxes.statusCode, 200);
+  assert.ok(
+    (ownerMailboxes.json() as { address: string }[]).some(
+      (row) => row.address === 'ada@northwind.example',
+    ),
+  );
+
+  const invited = await app.inject({
+    method: 'POST',
+    url: '/api/v1/users',
+    headers,
+    payload: {
+      name: 'Dev User',
+      email: 'dev@northwind.example',
+      password: 'correct-horse-2',
+      role: 'member',
+    },
+  });
+  assert.equal(invited.statusCode, 201, invited.body);
+
+  const memberLogin = await app.inject({
+    method: 'POST',
+    url: '/api/v1/auth/sign-in',
+    payload: { email: 'dev@northwind.example', password: 'correct-horse-2' },
+  });
+  assert.equal(memberLogin.statusCode, 200, memberLogin.body);
+  const memberToken = (memberLogin.json() as { accessToken: string }).accessToken;
+  const memberBoxes = await app.inject({
+    method: 'GET',
+    url: '/api/v1/mailboxes',
+    headers: { authorization: `Bearer ${memberToken}` },
+  });
+  assert.equal(memberBoxes.statusCode, 200);
+  assert.ok(
+    (memberBoxes.json() as { address: string }[]).some(
+      (row) => row.address === 'dev@northwind.example',
+    ),
+  );
+
   await app.close();
 });

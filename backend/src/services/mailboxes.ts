@@ -390,6 +390,20 @@ export async function createAppPassword(
 }
 
 const DOMAIN_RE = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const SKIP_AUTO_DOMAIN = new Set([
+  'example.com',
+  'example.org',
+  'example.net',
+  'gmail.com',
+  'googlemail.com',
+  'yahoo.com',
+  'outlook.com',
+  'hotmail.com',
+  'live.com',
+  'icloud.com',
+  'proton.me',
+  'protonmail.com',
+]);
 
 /** Gives the signed-in person a mailbox on the domain in their address. */
 export async function ensurePrimaryMailbox(
@@ -401,6 +415,7 @@ export async function ensurePrimaryMailbox(
   const domainName = user.email.split('@')[1]?.toLowerCase() ?? '';
   const localPart = user.email.split('@')[0]?.toLowerCase() ?? '';
   if (!DOMAIN_RE.test(domainName) || !LOCAL_RE.test(localPart)) return;
+  if (SKIP_AUTO_DOMAIN.has(domainName)) return;
   let domain = (await deps.store.listDomains(org.id)).find((row) => row.domainName === domainName);
   if (!domain) {
     const taken = await deps.store.findDomainByName(domainName);
