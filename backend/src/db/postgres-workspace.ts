@@ -139,6 +139,13 @@ export class PostgresWorkspace extends WorkspaceStore {
         await tx`select * from scim_tokens where organization_id = ${organizationId}`;
       const scimUsers =
         await tx`select * from scim_users where organization_id = ${organizationId}`;
+      const extensions =
+        await tx`select data from org_workspace_extensions where organization_id = ${organizationId}`;
+      const extRow = asRow(extensions[0]);
+      const ext =
+        extRow?.data && typeof extRow.data === 'object'
+          ? (extRow.data as Partial<ModuleSnapshot>)
+          : {};
       const memberIds = new Map<string, string[]>();
       for (const item of members) {
         const row = asRow(item);
@@ -183,6 +190,15 @@ export class PostgresWorkspace extends WorkspaceStore {
         sso: mapSso(asRow(sso[0])),
         scimTokens: scimTokens.map((item) => mapScimToken(asRow(item))),
         scimUsers: scimUsers.map((item) => mapScimUser(asRow(item))),
+        mailStates: ext.mailStates ?? [],
+        mailDrafts: ext.mailDrafts ?? [],
+        mailTemplates: ext.mailTemplates ?? [],
+        mailRules: ext.mailRules ?? [],
+        mailPrefs: ext.mailPrefs ?? [],
+        partnerProfile: ext.partnerProfile ?? null,
+        partnerTenants: ext.partnerTenants ?? [],
+        partnerWebhooks: ext.partnerWebhooks ?? [],
+        operatorQueue: ext.operatorQueue ?? [],
       };
     });
   }
@@ -476,6 +492,24 @@ export class PostgresWorkspace extends WorkspaceStore {
           )
         `;
       }
+      const extPayload = {
+        mailStates: snap.mailStates ?? [],
+        mailDrafts: snap.mailDrafts ?? [],
+        mailTemplates: snap.mailTemplates ?? [],
+        mailRules: snap.mailRules ?? [],
+        mailPrefs: snap.mailPrefs ?? [],
+        partnerProfile: snap.partnerProfile ?? null,
+        partnerTenants: snap.partnerTenants ?? [],
+        partnerWebhooks: snap.partnerWebhooks ?? [],
+        operatorQueue: snap.operatorQueue ?? [],
+      };
+      await tx`
+        insert into org_workspace_extensions (organization_id, data, updated_at)
+        values (${organizationId}, ${JSON.stringify(extPayload)}::jsonb, now())
+        on conflict (organization_id) do update
+          set data = excluded.data,
+              updated_at = excluded.updated_at
+      `;
     });
   }
 }

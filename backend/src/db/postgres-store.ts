@@ -419,6 +419,11 @@ export class PostgresStore implements ControlStore {
     return row ? mapOrg(row) : null;
   }
 
+  async listAllOrgs(): Promise<OrgRecord[]> {
+    const rows = await this.sql`select * from organizations order by created_at desc`;
+    return rows.map((row) => mapOrg(row as Row));
+  }
+
   async updateOrg(organizationId: string, patch: Partial<OrgRecord>): Promise<OrgRecord | null> {
     const current = await this.findOrg(organizationId);
     if (!current) return null;

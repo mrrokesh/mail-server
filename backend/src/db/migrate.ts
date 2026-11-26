@@ -22,6 +22,7 @@ const files = [
   '0002_v2_modules.sql',
   '0003_workspace_modules.sql',
   '0004_stored_mail.sql',
+  '0005_workspace_extensions.sql',
 ];
 for (const name of files) {
   const seen = await sql`select id from schema_migrations where id = ${name}`;
