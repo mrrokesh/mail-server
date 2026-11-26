@@ -1,10 +1,13 @@
+import type { ErrorCode } from '@mrrokesh/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { KeyRound } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { z } from 'zod';
 import { ErrorNote, Field, SelectField, TextArea } from '../../components/ui/field';
+import { Icon } from '../../components/ui/icon';
+import { Badge } from '../../components/ui/primitives';
 import { ApiProblem, readOrFallback, writeOrFallback } from '../../lib/api';
 import { useDocumentTitle } from '../../lib/use-document-title';
-import type { ErrorCode } from '@mrrokesh/shared';
 
 const ssoSchema = z.object({
   configured: z.boolean(),
@@ -19,7 +22,7 @@ const tokenSchema = z.object({
 });
 
 export function SsoPage() {
-  useDocumentTitle('Single sign-on');
+  useDocumentTitle('SSO & SCIM');
   const queryClient = useQueryClient();
   const sso = useQuery({
     queryKey: ['sso'],
@@ -36,7 +39,7 @@ export function SsoPage() {
   const [protocol, setProtocol] = useState<'saml' | 'oidc'>('oidc');
   const [issuer, setIssuer] = useState('https://');
   const [metadata, setMetadata] = useState('');
-  const [label, setLabel] = useState('Entra');
+  const [label, setLabel] = useState('Microsoft Entra');
   const [token, setToken] = useState<string | null>(null);
   const [code, setCode] = useState<ErrorCode | null>(null);
 
@@ -77,50 +80,77 @@ export function SsoPage() {
   }
 
   return (
-    <div className="read">
-      <h1 className="h1">Single sign-on</h1>
-      <p className="muted">
-        SAML and OIDC metadata is encrypted at rest. SCIM here only stores users. It does not create
-        mailboxes.
-      </p>
-      {sso.data?.configured ? (
-        <p>
-          {sso.data.protocol} · {sso.data.issuer}
-        </p>
-      ) : (
-        <p>No identity provider is saved.</p>
-      )}
-      <form className="stack" onSubmit={onSave} noValidate>
-        <SelectField
-          label="Protocol"
-          value={protocol}
-          onChange={(event) => setProtocol(event.target.value === 'saml' ? 'saml' : 'oidc')}
-        >
-          <option value="oidc">OIDC</option>
-          <option value="saml">SAML</option>
-        </SelectField>
-        <Field label="Issuer" value={issuer} onChange={(event) => setIssuer(event.target.value)} />
-        <TextArea
-          label="Metadata"
-          value={metadata}
-          onChange={(event) => setMetadata(event.target.value)}
-        />
-        <button className="btn btn-primary" type="submit">
-          Save provider
-        </button>
-      </form>
-      <form className="stack" onSubmit={onToken} noValidate>
-        <Field
-          label="SCIM token label"
-          value={label}
-          onChange={(event) => setLabel(event.target.value)}
-        />
-        <button className="btn btn-quiet" type="submit">
-          Create SCIM token
-        </button>
-      </form>
-      {token ? <p className="break">Copy this token now. It is not shown again. {token}</p> : null}
+    <div className="page-wrap">
+      <div className="spread">
+        <div>
+          <h1 className="h2">Single Sign-On &amp; SCIM</h1>
+          <p className="caption muted">
+            Configure SAML 2.0 / OIDC identity providers and issue SCIM 2.0 provisioning tokens.
+          </p>
+        </div>
+        {sso.data?.configured ? (
+          <Badge tone="success">
+            {sso.data.protocol?.toUpperCase()} · {sso.data.issuer}
+          </Badge>
+        ) : (
+          <Badge>Not configured</Badge>
+        )}
+      </div>
+
       {code ? <ErrorNote code={code} /> : null}
+
+      <div className="two-col">
+        <form className="card stack" onSubmit={onSave} noValidate>
+          <div className="cluster-2">
+            <Icon icon={KeyRound} size={18} />
+            <h2 className="h3">Identity provider</h2>
+          </div>
+          <SelectField
+            label="Protocol"
+            value={protocol}
+            onChange={(event) => setProtocol(event.target.value === 'saml' ? 'saml' : 'oidc')}
+          >
+            <option value="oidc">OIDC</option>
+            <option value="saml">SAML 2.0</option>
+          </SelectField>
+          <Field
+            label="Issuer URL"
+            value={issuer}
+            onChange={(event) => setIssuer(event.target.value)}
+          />
+          <TextArea
+            label="Encrypted metadata / client configuration"
+            value={metadata}
+            onChange={(event) => setMetadata(event.target.value)}
+          />
+          <button className="btn btn-primary" type="submit">
+            Save identity provider
+          </button>
+        </form>
+
+        <div className="card stack">
+          <h2 className="h3">SCIM 2.0 Directory Sync</h2>
+          <p className="caption muted">
+            Provision users automatically from Microsoft Entra ID, Google Workspace, or Okta.
+          </p>
+          <form className="stack" onSubmit={onToken} noValidate>
+            <Field
+              label="Token label"
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+            />
+            <button className="btn btn-quiet" type="submit">
+              Generate SCIM token
+            </button>
+          </form>
+          {token ? (
+            <div className="card-bg stack-2">
+              <p className="caption strong">Copy this SCIM token now (shown once)</p>
+              <p className="mono break">{token}</p>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

@@ -17,7 +17,6 @@ import { ApiError } from '../errors';
 import type { AppDeps } from '../app-deps';
 import type { OrgRecord, UserRecord } from '../store/types';
 import { presentOrg, presentUser, writeAudit } from './access';
-import { ensurePrimaryMailbox } from './mailboxes';
 
 export interface SessionBody {
   tokenType: 'Bearer';
@@ -240,7 +239,6 @@ export async function signupAccount(
   const user = await deps.store.findUser(orgId, userId);
   const org = await deps.store.findOrg(orgId);
   if (!user || !org) throw new ApiError('API-SRV-500');
-  await ensurePrimaryMailbox(deps, user, org, meta);
   return { session: await issueSession(deps, user, org, meta), syncStatus: sync.syncStatus };
 }
 
@@ -339,8 +337,6 @@ export async function loginAccount(
   }
   const fresh = await deps.store.findUser(user.organizationId, user.id);
   if (!fresh) throw new ApiError('API-SRV-500');
-  const mailboxOrg = await deps.store.findOrg(fresh.organizationId);
-  if (mailboxOrg) await ensurePrimaryMailbox(deps, fresh, mailboxOrg, meta);
   await writeAudit(deps.store, {
     at: deps.now(),
     organizationId: user.organizationId,

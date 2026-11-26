@@ -1,10 +1,13 @@
+import type { ErrorCode } from '@mrrokesh/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { EyeOff, KeyRound } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { z } from 'zod';
 import { ErrorNote, Field, TextArea } from '../../components/ui/field';
+import { Icon } from '../../components/ui/icon';
+import { Badge } from '../../components/ui/primitives';
 import { ApiProblem, readOrFallback, writeOrFallback } from '../../lib/api';
 import { useDocumentTitle } from '../../lib/use-document-title';
-import type { ErrorCode } from '@mrrokesh/shared';
 
 const aliasSchema = z.object({
   id: z.string(),
@@ -30,7 +33,7 @@ const keySchema = z.object({
 });
 
 export function PrivacyPage() {
-  useDocumentTitle('Privacy');
+  useDocumentTitle('Privacy & Masked Aliases');
   const queryClient = useQueryClient();
   const view = useQuery({
     queryKey: ['privacy'],
@@ -71,133 +74,153 @@ export function PrivacyPage() {
   const data = view.data;
 
   return (
-    <div className="read">
-      <h1 className="h1">Privacy</h1>
-      <p>
-        Masked aliases are addresses on mask.rokeshcloud.com. That domain is not connected to
-        inbound mail. Keys are stored as the client sends them. This server does not generate keys
-        or encrypt mail.
-      </p>
-      {data ? (
-        <>
-          <p>
-            Dashboard scope is {data.scope}. {data.trackers.note} {data.zeroAccess.note}
+    <div className="page-wrap">
+      <div className="spread">
+        <div>
+          <h1 className="h2">Privacy &amp; Masked Email</h1>
+          <p className="caption muted">
+            Create disposable masked aliases and register client-wrapped OpenPGP public keys.
           </p>
+        </div>
+        {data ? (
           <button
             type="button"
-            className="btn btn-quiet"
+            className={data.addon ? 'btn btn-quiet btn-sm' : 'btn btn-primary btn-sm'}
             onClick={() =>
               void send('/privacy/addon', 'PUT', { enabled: !data.addon }).then(async (result) => {
                 if (result?.data) await queryClient.invalidateQueries({ queryKey: ['privacy'] });
               })
             }
           >
-            {data.addon ? 'Turn Privacy add-on off' : 'Turn Privacy add-on on'}
+            {data.addon ? 'Privacy add-on active' : 'Enable Privacy add-on'}
           </button>
-          <ul>
-            {data.aliases.map((alias) => (
-              <li key={alias.id}>
-                {alias.label} · {alias.address} · {alias.enabled ? 'On' : 'Off'}
-                {alias.enabled ? (
-                  <>
-                    {' '}
-                    <button
-                      type="button"
-                      className="btn btn-text"
-                      onClick={() =>
-                        void send(`/privacy/aliases/${alias.id}/disable`, 'POST', {}).then(
-                          async (result) => {
-                            if (result?.data)
-                              await queryClient.invalidateQueries({ queryKey: ['privacy'] });
-                          },
-                        )
-                      }
-                    >
-                      Disable alias
-                    </button>
-                  </>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </>
-      ) : view.isError ? (
-        <ErrorNote code={view.error instanceof ApiProblem ? view.error.code : 'API-SRV-500'} />
-      ) : (
-        <p>Privacy details appear when the API answers.</p>
-      )}
-      <form
-        className="stack"
-        onSubmit={(event) =>
-          void send('/privacy/aliases', 'POST', { label }, event).then(async (result) => {
-            if (result?.data) {
-              setLabel('');
-              await queryClient.invalidateQueries({ queryKey: ['privacy'] });
-            }
-          })
-        }
-      >
-        <Field
-          label="Website label"
-          value={label}
-          onChange={(event) => setLabel(event.target.value)}
-          required
-        />
-        <button className="btn btn-primary" type="submit">
-          Create alias
-        </button>
-      </form>
-      <form
-        className="stack"
-        onSubmit={(event) =>
-          void send(
-            '/privacy/keys',
-            'PUT',
-            {
-              address,
-              publicKeyArmored: publicKey,
-              wrappedPrivateKey: wrappedKey,
-              fingerprint,
-            },
-            event,
-          ).then((result) => {
-            const parsed = keySchema.safeParse(result?.data);
-            setKeyNote(parsed.success ? parsed.data.note : null);
-          })
-        }
-      >
-        <h2 className="h3">Key hook</h2>
-        <Field
-          label="Address"
-          type="email"
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-          required
-        />
-        <TextArea
-          label="Public key"
-          value={publicKey}
-          onChange={(event) => setPublicKey(event.target.value)}
-          required
-        />
-        <TextArea
-          label="Wrapped private key"
-          value={wrappedKey}
-          onChange={(event) => setWrappedKey(event.target.value)}
-          required
-        />
-        <Field
-          label="Fingerprint"
-          value={fingerprint}
-          onChange={(event) => setFingerprint(event.target.value)}
-          required
-        />
-        <button className="btn btn-quiet" type="submit">
-          Store key hook
-        </button>
-        {keyNote ? <p>{keyNote}</p> : null}
-      </form>
+        ) : null}
+      </div>
+
       {code ? <ErrorNote code={code} /> : null}
+      {view.isError ? (
+        <ErrorNote code={view.error instanceof ApiProblem ? view.error.code : 'API-SRV-500'} />
+      ) : null}
+
+      <div className="two-col">
+        <div className="card stack">
+          <div className="cluster-2">
+            <Icon icon={EyeOff} size={18} />
+            <h2 className="h3">Masked aliases</h2>
+          </div>
+          <form
+            className="cluster"
+            onSubmit={(event) =>
+              void send('/privacy/aliases', 'POST', { label }, event).then(async (result) => {
+                if (result?.data) {
+                  setLabel('');
+                  await queryClient.invalidateQueries({ queryKey: ['privacy'] });
+                }
+              })
+            }
+          >
+            <div style={{ flex: 1 }}>
+              <Field
+                label="Website or service label"
+                placeholder="Shopping portal"
+                value={label}
+                onChange={(event) => setLabel(event.target.value)}
+                required
+              />
+            </div>
+            <button className="btn btn-primary btn-sm" type="submit">
+              Create alias
+            </button>
+          </form>
+          {data && data.aliases.length > 0 ? (
+            <div className="stack-2">
+              {data.aliases.map((alias) => (
+                <div key={alias.id} className="spread">
+                  <div>
+                    <p className="caption strong">{alias.label}</p>
+                    <p className="mono">{alias.address}</p>
+                  </div>
+                  <div className="cluster-2">
+                    <Badge tone={alias.enabled ? 'success' : 'neutral'}>
+                      {alias.enabled ? 'Active' : 'Disabled'}
+                    </Badge>
+                    {alias.enabled ? (
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-sm"
+                        onClick={() =>
+                          void send(`/privacy/aliases/${alias.id}/disable`, 'POST', {}).then(
+                            async (result) => {
+                              if (result?.data)
+                                await queryClient.invalidateQueries({ queryKey: ['privacy'] });
+                            },
+                          )
+                        }
+                      >
+                        Disable
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <form
+          className="card stack"
+          onSubmit={(event) =>
+            void send(
+              '/privacy/keys',
+              'PUT',
+              {
+                address,
+                publicKeyArmored: publicKey,
+                wrappedPrivateKey: wrappedKey,
+                fingerprint,
+              },
+              event,
+            ).then((result) => {
+              const parsed = keySchema.safeParse(result?.data);
+              setKeyNote(parsed.success ? parsed.data.note : null);
+            })
+          }
+        >
+          <div className="cluster-2">
+            <Icon icon={KeyRound} size={18} />
+            <h2 className="h3">Zero-access OpenPGP key hook</h2>
+          </div>
+          <Field
+            label="Mailbox address"
+            type="email"
+            value={address}
+            onChange={(event) => setAddress(event.target.value)}
+            required
+          />
+          <TextArea
+            label="Armored public key"
+            value={publicKey}
+            onChange={(event) => setPublicKey(event.target.value)}
+            required
+          />
+          <TextArea
+            label="Client-wrapped private key"
+            value={wrappedKey}
+            onChange={(event) => setWrappedKey(event.target.value)}
+            required
+          />
+          <Field
+            label="Fingerprint"
+            value={fingerprint}
+            onChange={(event) => setFingerprint(event.target.value)}
+            required
+          />
+          <button className="btn btn-quiet" type="submit">
+            Store client key
+          </button>
+          {keyNote ? <p className="caption muted">{keyNote}</p> : null}
+        </form>
+      </div>
     </div>
   );
 }

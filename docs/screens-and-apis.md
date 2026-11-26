@@ -81,27 +81,29 @@ This is the MVP inventory. Paths under `/api/v1` are the control plane. The web 
 
 ## Organization, users, domains, mailboxes
 
-| Method and path                                                                       | Notes                              |
-| ------------------------------------------------------------------------------------- | ---------------------------------- |
-| `GET /api/v1/org`, `PATCH /api/v1/org`                                                | Owner can rename.                  |
-| `PUT /api/v1/org/mfa-policy`                                                          |                                    |
-| `GET /api/v1/users`, `POST /api/v1/users`                                             |                                    |
-| `POST /api/v1/users/:id/suspend`                                                      |                                    |
-| `POST /api/v1/users/:id/restore`                                                      |                                    |
-| `DELETE /api/v1/users/:id`                                                            |                                    |
-| `POST /api/v1/users/:id/password`                                                     | Body field is `password`.          |
-| `DELETE /api/v1/users/:id/sessions`                                                   |                                    |
-| `GET /api/v1/domains`, `POST /api/v1/domains`                                         |                                    |
-| `GET /api/v1/domains/:id`                                                             |                                    |
-| `GET /api/v1/domains/:id/dns`                                                         |                                    |
-| `POST /api/v1/domains/:id/verify`                                                     |                                    |
-| `PATCH /api/v1/domains/:id`                                                           | Catch-all mailbox.                 |
-| `GET /api/v1/mailboxes`, `POST /api/v1/mailboxes`                                     |                                    |
-| `POST /api/v1/mailboxes/:id/aliases`                                                  |                                    |
-| `DELETE /api/v1/mailboxes/:id/aliases/:aliasId`                                       |                                    |
-| `POST /api/v1/mailboxes/:id/delegations`                                              |                                    |
-| `GET /api/v1/mailboxes/:id/app-passwords`, `POST /api/v1/mailboxes/:id/app-passwords` | Plaintext only on create.          |
-| `GET /api/v1/audit`                                                                   | Plan must include audit retention. |
+| Method and path                                                                       | Notes                                               |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `GET /api/v1/org`, `PATCH /api/v1/org`                                                | Owner can rename.                                   |
+| `PUT /api/v1/org/mfa-policy`                                                          |                                                     |
+| `GET /api/v1/users`, `POST /api/v1/users`                                             |                                                     |
+| `POST /api/v1/users/:id/suspend`                                                      |                                                     |
+| `POST /api/v1/users/:id/activate`                                                     |                                                     |
+| `POST /api/v1/users/:id/restore`                                                      |                                                     |
+| `DELETE /api/v1/users/:id`                                                            |                                                     |
+| `POST /api/v1/users/:id/password`                                                     | Body field is `password`.                           |
+| `DELETE /api/v1/users/:id/sessions`                                                   |                                                     |
+| `GET /api/v1/domains`, `POST /api/v1/domains`                                         |                                                     |
+| `GET /api/v1/domains/:id`                                                             |                                                     |
+| `GET /api/v1/domains/:id/dns`                                                         |                                                     |
+| `POST /api/v1/domains/:id/verify`                                                     |                                                     |
+| `PATCH /api/v1/domains/:id`                                                           | Catch-all mailbox.                                  |
+| `GET /api/v1/mailboxes`, `POST /api/v1/mailboxes`                                     |                                                     |
+| `POST /api/v1/mailboxes/:id/aliases`                                                  |                                                     |
+| `DELETE /api/v1/mailboxes/:id/aliases/:aliasId`                                       |                                                     |
+| `POST /api/v1/mailboxes/:id/delegations`                                              |                                                     |
+| `GET /api/v1/mailboxes/:id/app-passwords`, `POST /api/v1/mailboxes/:id/app-passwords` | Plaintext only on create.                           |
+| `GET /api/v1/audit`                                                                   | Plan must include audit retention.                  |
+| `GET /api/v1/admin/overview`                                                          | Workspace seat, domain, mailbox, and audit summary. |
 
 ## Billing
 
@@ -116,15 +118,22 @@ This is the MVP inventory. Paths under `/api/v1` are the control plane. The web 
 
 ## Mail
 
-| Method and path                 | Notes                                                                                                             |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `GET /api/v1/mail/protocols`    | IMAP, SMTP, and POP3 follow the plan.                                                                             |
-| `POST /api/v1/mail/session`     | JMAP-shaped session.                                                                                              |
-| `GET /api/v1/mail/threads`      | Web mail list. `{ threads }` with `folder`, `fromName`, `fromEmail`, `preview`, and `bodyHtml`.                   |
-| `GET /api/v1/mail/messages`     | `mailboxId` or `mailbox` (`inbox`, `sent`, `drafts`, `archive`, `spam`). Body is `{ messages }`.                  |
-| `GET /api/v1/mail/messages/:id` | One message for the mobile reader.                                                                                |
-| `POST /api/v1/mail/messages`    | `to` is one address or a list. `from` defaults to the caller's mailbox. `text` and `textBody` are the same field. |
-| `POST /api/v1/mail/jmap`        | `Email/set` and `Mailbox/get`.                                                                                    |
+| Method and path                                                      | Notes                                                                                                             |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/mail/protocols`                                         | IMAP, SMTP, and POP3 follow the plan.                                                                             |
+| `POST /api/v1/mail/session`                                          | JMAP-shaped session.                                                                                              |
+| `GET /api/v1/mail/threads`                                           | Web mail list. `{ threads }` with `folder`, `fromName`, `fromEmail`, `preview`, and `bodyHtml`.                   |
+| `GET /api/v1/mail/messages`                                          | `mailboxId` or `mailbox` (`inbox`, `sent`, `drafts`, `archive`, `spam`). Body is `{ messages }`.                  |
+| `GET /api/v1/mail/messages/:id`                                      | One message for the mobile reader.                                                                                |
+| `POST /api/v1/mail/messages`                                         | `to` is one address or a list. `from` defaults to the caller's mailbox. `text` and `textBody` are the same field. |
+| `PATCH /api/v1/mail/messages/:id`, `POST /api/v1/mail/messages/bulk` | Update folder (`inbox`, `sent`, `drafts`, `snoozed`, `archive`, `spam`, `trash`), unread, starred, snoozeUntil.   |
+| `GET /api/v1/mail/messages/:id/eml`                                  | Export raw RFC 5322 `.eml` file.                                                                                  |
+| `GET`, `POST`, `DELETE /api/v1/mail/drafts`                          | Persisted message drafts.                                                                                         |
+| `GET`, `PUT /api/v1/mail/preferences`                                | Signature, out-of-office reply, undo-send window, keyboard preset.                                                |
+| `GET`, `POST`, `DELETE /api/v1/mail/templates`                       | Saved message templates with `{{variables}}`.                                                                     |
+| `GET`, `POST`, `PATCH`, `DELETE /api/v1/mail/rules`                  | Visual Sieve rules with compiled RFC 5228 Sieve preview.                                                          |
+| `GET /.well-known/mta-sts.txt`, `GET /mail/config-v1.1.xml`          | Hosted MTA-STS policy and Thunderbird Autoconfig XML.                                                             |
+| `POST /api/v1/mail/jmap`                                             | `Email/set` and `Mailbox/get`.                                                                                    |
 
 The mock mail plane files a message as `sent` when `from` is the caller's mailbox or alias, and as `inbox` otherwise. Drafts, archive, and spam stay empty until a real mailbox store tracks folders.
 
@@ -164,28 +173,34 @@ Chat is `mrrokesh-chat`. It is not Mattermost and it does not use Rocket.Chat `e
 
 With `CONTROL_STORE=memory` (the default, including tests), module rows stay in the API process. With `CONTROL_STORE=postgres`, the adapter loads drive files and shares, tasks, notes, booking pages and appointments, plus the v2 tables below, on the first request for an organisation and writes them back when the response finishes. Docs, Meet, calendar events, contacts, AI, compliance, and SSO stay in memory either way. One API process owns that working set.
 
-| Method and path                                           | Notes                                                                                                                                                                                                                                                     |
-| --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`, `POST /api/v1/chat/conversations`                  | Business and above. `kind` is `direct`, `group`, or `channel`. A direct chat needs one other user id.                                                                                                                                                     |
-| `GET`, `POST /api/v1/chat/conversations/:id/messages`     | Members only. `threadRootId` replies to a top-level message. `driveFileId` must already exist in Drive.                                                                                                                                                   |
-| `GET /api/v1/chat/search?q=`                              | Up to 100 hits in conversations the caller belongs to.                                                                                                                                                                                                    |
-| `GET /api/v1/chat/presence`                               | `calendarLinked` is false. Presence is not computed.                                                                                                                                                                                                      |
-| `GET`, `POST /api/v1/privacy/aliases`                     | Starter and above. Addresses use `mask.rokeshcloud.com`, which is not routed until privacy routing is live. Caps are 10 on Starter and 50 on Business and Business Plus. The Privacy add-on and Enterprise are uncapped. Over the cap is `API-QUOTA-004`. |
-| `POST /api/v1/privacy/aliases/:id/disable`                | Turns the caller's alias off.                                                                                                                                                                                                                             |
-| `GET /api/v1/privacy/dashboard`                           | Basic on Starter. Full when the add-on or Enterprise is on. Tracker counts are null.                                                                                                                                                                      |
-| `PUT /api/v1/privacy/addon`                               | Owner or billing admin. This is not a charge.                                                                                                                                                                                                             |
-| `GET`, `PUT /api/v1/privacy/keys`                         | Requires the add-on or Enterprise. The body is a client public key and a wrapped private key. `serverDecrypts` and `generatesKeys` are false. An unprotected private key is rejected.                                                                     |
-| `POST /api/v1/privacy/recovery`                           | Body is `{ "registered": true }`. The phrase is not accepted.                                                                                                                                                                                             |
-| `GET /api/v1/enterprise`                                  | Enterprise. Owner or security admin.                                                                                                                                                                                                                      |
-| `POST /api/v1/enterprise/byok`                            | Version plus a key reference. Key material is rejected. Mail is not re-encrypted.                                                                                                                                                                         |
-| `POST /api/v1/enterprise/siem`                            | `webhook` needs an https URL. `syslog` needs `host:port`. Nothing is delivered.                                                                                                                                                                           |
-| `POST /api/v1/enterprise/siem/:id/sample`                 | Returns a sample event with `delivered: false`.                                                                                                                                                                                                           |
-| `POST /api/v1/enterprise/attack-simulations`              | Placeholder. `emailsSent` is 0.                                                                                                                                                                                                                           |
-| `PUT /api/v1/enterprise/dedicated-ip`                     | Flag only. `routed` is false.                                                                                                                                                                                                                             |
-| `GET`, `PUT /api/v1/admin/brand`                          | Business Plus owner. No colour field. Accent stays `brand`.                                                                                                                                                                                               |
-| `GET /api/v1/public/brand?host=`                          | Public. Unknown hosts return MR Rokesh.                                                                                                                                                                                                                   |
-| `GET`, `POST /api/v1/campaigns`                           | Starter and above. Drafts are not mailbox messages. Response includes `List-Unsubscribe` and `List-Unsubscribe-Post`.                                                                                                                                     |
-| `GET`, `POST /api/v1/public/campaigns/unsubscribe/:token` | RFC 8058 placeholder. POST accepts JSON or `application/x-www-form-urlencoded` with `email` and optional `List-Unsubscribe=One-Click`.                                                                                                                    |
+| Method and path                                                      | Notes                                                                                                                                                                                                                                                     |
+| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`, `POST /api/v1/chat/conversations`                             | Business and above. `kind` is `direct`, `group`, or `channel`. A direct chat needs one other user id.                                                                                                                                                     |
+| `GET`, `POST /api/v1/chat/conversations/:id/messages`                | Members only. `threadRootId` replies to a top-level message. `driveFileId` must already exist in Drive.                                                                                                                                                   |
+| `GET /api/v1/chat/search?q=`                                         | Up to 100 hits in conversations the caller belongs to.                                                                                                                                                                                                    |
+| `GET /api/v1/chat/presence`                                          | `calendarLinked` is false. Presence is not computed.                                                                                                                                                                                                      |
+| `GET`, `POST /api/v1/privacy/aliases`                                | Starter and above. Addresses use `mask.rokeshcloud.com`, which is not routed until privacy routing is live. Caps are 10 on Starter and 50 on Business and Business Plus. The Privacy add-on and Enterprise are uncapped. Over the cap is `API-QUOTA-004`. |
+| `POST /api/v1/privacy/aliases/:id/disable`                           | Turns the caller's alias off.                                                                                                                                                                                                                             |
+| `GET /api/v1/privacy/dashboard`                                      | Basic on Starter. Full when the add-on or Enterprise is on. Tracker counts are null.                                                                                                                                                                      |
+| `PUT /api/v1/privacy/addon`                                          | Owner or billing admin. This is not a charge.                                                                                                                                                                                                             |
+| `GET`, `PUT /api/v1/privacy/keys`                                    | Requires the add-on or Enterprise. The body is a client public key and a wrapped private key. `serverDecrypts` and `generatesKeys` are false. An unprotected private key is rejected.                                                                     |
+| `POST /api/v1/privacy/recovery`                                      | Body is `{ "registered": true }`. The phrase is not accepted.                                                                                                                                                                                             |
+| `GET /api/v1/enterprise`                                             | Enterprise. Owner or security admin.                                                                                                                                                                                                                      |
+| `POST /api/v1/enterprise/byok`                                       | Version plus a key reference. Key material is rejected. Mail is not re-encrypted.                                                                                                                                                                         |
+| `POST /api/v1/enterprise/siem`                                       | `webhook` needs an https URL. `syslog` needs `host:port`. Nothing is delivered.                                                                                                                                                                           |
+| `POST /api/v1/enterprise/siem/:id/sample`                            | Returns a sample event with `delivered: false`.                                                                                                                                                                                                           |
+| `POST /api/v1/enterprise/attack-simulations`                         | Placeholder. `emailsSent` is 0.                                                                                                                                                                                                                           |
+| `PUT /api/v1/enterprise/dedicated-ip`                                | Flag only. `routed` is false.                                                                                                                                                                                                                             |
+| `GET`, `PUT /api/v1/admin/brand`                                     | Business Plus owner. No colour field. Accent stays `brand`.                                                                                                                                                                                               |
+| `GET /api/v1/public/brand?host=`                                     | Public. Unknown hosts return MR Rokesh.                                                                                                                                                                                                                   |
+| `GET`, `POST /api/v1/campaigns`                                      | Starter and above. Drafts are not mailbox messages. Response includes `List-Unsubscribe` and `List-Unsubscribe-Post`.                                                                                                                                     |
+| `GET`, `POST /api/v1/public/campaigns/unsubscribe/:token`            | RFC 8058 placeholder. POST accepts JSON or `application/x-www-form-urlencoded` with `email` and optional `List-Unsubscribe=One-Click`.                                                                                                                    |
+| `GET`, `PUT /api/v1/partner/overview`, `/profile`                    | Owner or billing admin. Reseller margin tier (`authorized` 20%, `silver` 28%, `gold` 35%), wholesale INR catalog, managed tenants, and webhooks.                                                                                                          |
+| `POST`, `PATCH /api/v1/partner/tenants`, `/act-as-admin`             | Creates/updates child customer workspaces and opens audited 15-minute support sessions recorded in the audit log.                                                                                                                                         |
+| `POST`, `DELETE /api/v1/partner/webhooks`                            | HTTPS provisioning webhook endpoints with one-time signing secret output.                                                                                                                                                                                 |
+| `GET /api/v1/operator/overview`                                      | Restricted to emails configured in `OPERATOR_EMAILS`. Lists tenant summary, sending status, and abuse/IP-pool queue.                                                                                                                                      |
+| `POST`, `PATCH /api/v1/operator/orgs/:orgId/inspect`, `/orgs/:orgId` | Inspects tenant metadata or pauses/suspends sending. Every call appends an immutable audit record inside the target tenant's compliance audit trail.                                                                                                      |
+| `POST`, `PATCH /api/v1/operator/queue`                               | Logs and resolves abuse spike, bounce rate, and trial pool triage alerts.                                                                                                                                                                                 |
 
 ## Still unmatched
 

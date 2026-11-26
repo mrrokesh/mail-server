@@ -13,6 +13,7 @@ export interface SessionUser {
   organization: string;
   plan: PlanTier;
   role: string;
+  isOperator?: boolean;
   preview: boolean;
 }
 

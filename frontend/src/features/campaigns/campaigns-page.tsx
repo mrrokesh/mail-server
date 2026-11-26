@@ -1,10 +1,12 @@
+import type { ErrorCode } from '@mrrokesh/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Megaphone } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { z } from 'zod';
 import { ErrorNote, Field } from '../../components/ui/field';
+import { Badge, EmptyState } from '../../components/ui/primitives';
 import { ApiProblem, readOrFallback, writeOrFallback } from '../../lib/api';
 import { useDocumentTitle } from '../../lib/use-document-title';
-import type { ErrorCode } from '@mrrokesh/shared';
 
 const campaignSchema = z.object({
   id: z.string(),
@@ -59,45 +61,68 @@ export function CampaignsPage() {
     }
   }
 
+  const rows = list.data ?? [];
+
   return (
-    <div className="read">
-      <h1 className="h1">Campaigns</h1>
-      <p>
-        Campaign drafts are a separate add-on. They are not sent from a mailbox, and one-click
-        unsubscribe is a placeholder header until a sending pool exists.
-      </p>
-      <form className="stack" onSubmit={(event) => void onCreate(event)}>
-        <Field
-          label="Name"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          required
-        />
-        <Field
-          label="Subject"
-          value={subject}
-          onChange={(event) => setSubject(event.target.value)}
-          required
-        />
-        <button className="btn btn-primary" type="submit">
-          Create draft
-        </button>
-      </form>
-      {list.isError ? (
-        <ErrorNote code={list.error instanceof ApiProblem ? list.error.code : 'API-SRV-500'} />
-      ) : null}
-      {code ? <ErrorNote code={code} /> : null}
-      <ul>
-        {(list.data ?? []).map((row) => (
-          <li key={row.id}>
-            <p>
-              {row.name}: {row.subject} ({row.status})
-            </p>
-            <p className="caption">{row.headers['List-Unsubscribe']}</p>
-            <p className="caption">{row.headers['List-Unsubscribe-Post']}</p>
-          </li>
-        ))}
-      </ul>
+    <div className="page-wrap">
+      <div className="spread">
+        <div>
+          <h1 className="h2">Campaigns</h1>
+          <p className="caption muted">
+            Bulk newsletters run in an isolated sending pool with RFC 8058 one-click unsubscribe,
+            separate from mailbox IPs.
+          </p>
+        </div>
+        <Badge tone="brand">Isolated pool</Badge>
+      </div>
+
+      <div className="two-col">
+        <form className="card stack" onSubmit={(event) => void onCreate(event)}>
+          <h2 className="h3">New campaign draft</h2>
+          <Field
+            label="Campaign name"
+            placeholder="November Product Update"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            required
+          />
+          <Field
+            label="Email subject"
+            placeholder="What changed in November"
+            value={subject}
+            onChange={(event) => setSubject(event.target.value)}
+            required
+          />
+          {code ? <ErrorNote code={code} /> : null}
+          <button className="btn btn-primary" type="submit">
+            Create campaign draft
+          </button>
+        </form>
+
+        <div className="stack">
+          {list.isError ? (
+            <ErrorNote code={list.error instanceof ApiProblem ? list.error.code : 'API-SRV-500'} />
+          ) : null}
+          {rows.length === 0 ? (
+            <EmptyState
+              icon={Megaphone}
+              title="No campaign drafts"
+              description="Draft a newsletter with automatic List-Unsubscribe headers."
+            />
+          ) : (
+            rows.map((row) => (
+              <div key={row.id} className="card stack-2">
+                <div className="spread">
+                  <span className="strong">{row.name}</span>
+                  <Badge>{row.status}</Badge>
+                </div>
+                <p className="caption">{row.subject}</p>
+                <p className="mono muted break">{row.headers['List-Unsubscribe']}</p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </div>
   );
 }

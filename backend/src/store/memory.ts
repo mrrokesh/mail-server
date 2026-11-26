@@ -166,6 +166,10 @@ export class MemoryStore implements ControlStore {
     return org ? clone(org) : null;
   }
 
+  async listAllOrgs(): Promise<OrgRecord[]> {
+    return [...this.orgs.values()].map((org) => clone(org));
+  }
+
   async updateOrg(organizationId: string, patch: Partial<OrgRecord>): Promise<OrgRecord | null> {
     const org = this.orgs.get(organizationId);
     if (!org) return null;

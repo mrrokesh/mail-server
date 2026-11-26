@@ -6,6 +6,8 @@ import { WorkspaceShell } from '../components/shell/workspace-shell';
 import { BrandPage } from '../features/admin/brand-page';
 import { CompliancePage } from '../features/admin/compliance-page';
 import { EnterprisePage } from '../features/admin/enterprise-page';
+import { OperatorPage } from '../features/admin/operator-page';
+import { PartnerPage } from '../features/admin/partner-page';
 import { DnsWizardPage } from '../features/admin/dns-wizard-page';
 import { DomainsPage } from '../features/admin/domains-page';
 import { SsoPage } from '../features/admin/sso-page';
@@ -76,6 +78,9 @@ export function AppRoutes() {
           <Route path="admin/sso" element={<SsoPage />} />
           <Route path="admin/enterprise" element={<EnterprisePage />} />
           <Route path="admin/brand" element={<BrandPage />} />
+          <Route path="admin/partner" element={<PartnerPage />} />
+          <Route path="partner" element={<Navigate to="/admin/partner" replace />} />
+          <Route path="operator" element={<OperatorPage />} />
         </Route>
       </Route>
     </Routes>

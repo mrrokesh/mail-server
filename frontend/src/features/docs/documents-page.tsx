@@ -1,7 +1,10 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { FileText, Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
+import { Icon } from '../../components/ui/icon';
+import { Badge, EmptyState } from '../../components/ui/primitives';
 import { readLive, writeLive } from '../../lib/api';
 import { useDocumentTitle } from '../../lib/use-document-title';
 
@@ -41,32 +44,74 @@ export function DocumentsPage() {
     await queryClient.invalidateQueries({ queryKey: ['docs'] });
   }
 
+  const list = docs.data ?? [];
+
   return (
-    <section className="billing-grid">
-      <h1 className="h2">Documents</h1>
-      <p className="muted">Opens in Collabora on this machine.</p>
-      <form
-        className="cluster"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void createDocument();
-        }}
-      >
-        <input
-          className="input"
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Document name"
+    <div className="page-wrap">
+      <div className="spread">
+        <div>
+          <h1 className="h2">Documents</h1>
+          <p className="caption muted">
+            Collaborative documents, spreadsheets, and Indian business templates via WOPI.
+          </p>
+        </div>
+        <form
+          className="cluster"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createDocument();
+          }}
+        >
+          <input
+            className="input input-compact"
+            style={{ width: 220 }}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Document title"
+          />
+          <button className="btn btn-primary btn-sm" type="submit" disabled={!name.trim()}>
+            <Icon icon={Plus} size={15} />
+            <span>New document</span>
+          </button>
+        </form>
+      </div>
+
+      {list.length === 0 ? (
+        <EmptyState
+          icon={FileText}
+          title="No documents yet"
+          description="Create a document to open it in the collaborative WOPI editor."
         />
-        <button className="btn btn-primary" type="submit">
-          New document
-        </button>
-      </form>
-      {(docs.data ?? []).map((doc) => (
-        <Link key={doc.id} className="break" to={`/documents/${doc.id}`}>
-          {doc.name}
-        </Link>
-      ))}
-    </section>
+      ) : (
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Version</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((doc) => (
+                <tr key={doc.id}>
+                  <td className="strong break">{doc.name}</td>
+                  <td>
+                    <Badge>{doc.kind}</Badge>
+                  </td>
+                  <td className="tabular">v{doc.version}</td>
+                  <td>
+                    <Link className="btn btn-quiet btn-sm" to={`/documents/${doc.id}`}>
+                      Open editor
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

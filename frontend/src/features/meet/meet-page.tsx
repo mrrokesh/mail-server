@@ -1,6 +1,9 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Video } from 'lucide-react';
 import { useState } from 'react';
 import { z } from 'zod';
+import { Icon } from '../../components/ui/icon';
+import { Badge, EmptyState } from '../../components/ui/primitives';
 import { ApiProblem, readLive, writeLive } from '../../lib/api';
 import { useDocumentTitle } from '../../lib/use-document-title';
 import { LiveRoom } from './live-room';
@@ -39,10 +42,7 @@ export function MeetPage() {
     try {
       const created = await writeLive(
         '/meet/rooms',
-        {
-          method: 'POST',
-          body: JSON.stringify({ title: name }),
-        },
+        { method: 'POST', body: JSON.stringify({ title: name }) },
         (input) => {
           const parsed = roomSchema.safeParse(input);
           return parsed.success ? parsed.data : null;
@@ -51,7 +51,7 @@ export function MeetPage() {
       setTitle('');
       await queryClient.invalidateQueries({ queryKey: ['meet', 'rooms'] });
       if (created.data.adapter !== 'livekit' || !created.data.livekitUrl.startsWith('ws')) {
-        setProblem('LiveKit is not configured on the API.');
+        setProblem('LiveKit SFU URL is not configured on this API instance yet.');
         return;
       }
       setActive(created.data);
@@ -66,47 +66,79 @@ export function MeetPage() {
     );
   }
 
+  const list = rooms.data ?? [];
+
   return (
-    <section className="billing-grid">
-      <h1 className="h2">Meet</h1>
-      <p className="muted">Start a room. Camera and microphone stay in this browser.</p>
-      <form
-        className="cluster"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void createRoom();
-        }}
-      >
-        <label className="stack">
-          <span className="caption">Title</span>
+    <div className="page-wrap">
+      <div className="spread">
+        <div>
+          <h1 className="h2">Meet</h1>
+          <p className="caption muted">
+            Video rooms powered by LiveKit SFU with screen sharing and participant limits by plan.
+          </p>
+        </div>
+        <form
+          className="cluster"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createRoom();
+          }}
+        >
           <input
-            className="input"
+            className="input input-compact"
+            style={{ width: 220 }}
+            placeholder="Meeting title"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
-        </label>
-        <button className="btn btn-primary" type="submit">
-          Start meeting
-        </button>
-      </form>
-      {problem ? <p className="muted">{problem}</p> : null}
-      {(rooms.data ?? []).map((room) => (
-        <button
-          key={room.id}
-          type="button"
-          className="btn btn-quiet"
-          onClick={() => {
-            if (room.adapter !== 'livekit' || !room.livekitUrl.startsWith('ws')) {
-              setProblem('LiveKit is not configured on the API.');
-              return;
-            }
-            setProblem(null);
-            setActive(room);
-          }}
-        >
-          {room.title}
-        </button>
-      ))}
-    </section>
+          <button className="btn btn-primary btn-sm" type="submit" disabled={!title.trim()}>
+            <Icon icon={Video} size={15} />
+            <span>Start meeting</span>
+          </button>
+        </form>
+      </div>
+
+      {problem ? (
+        <div className="privacy-bar">
+          <span className="caption muted">{problem}</span>
+        </div>
+      ) : null}
+
+      {list.length === 0 ? (
+        <EmptyState
+          icon={Video}
+          title="No active rooms"
+          description="Create a meeting room to generate an instant LiveKit join link."
+        />
+      ) : (
+        <div className="bento-grid">
+          {list.map((room) => (
+            <div key={room.id} className="card spread">
+              <div className="stack-2">
+                <p className="strong">{room.title}</p>
+                <div className="cluster-2">
+                  <Badge>Up to {room.participantCap} participants</Badge>
+                  <Badge>{room.maxMinutes} min</Badge>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-quiet btn-sm"
+                onClick={() => {
+                  if (room.adapter !== 'livekit' || !room.livekitUrl.startsWith('ws')) {
+                    setProblem('LiveKit SFU URL is not configured on this API instance yet.');
+                    return;
+                  }
+                  setProblem(null);
+                  setActive(room);
+                }}
+              >
+                Join room
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

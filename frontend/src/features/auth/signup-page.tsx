@@ -1,8 +1,9 @@
-import type { ErrorCode, PlanTier } from '@mrrokesh/shared';
+import { PLAN_TIER_LABEL, type ErrorCode, type PlanTier } from '@mrrokesh/shared';
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import { ErrorNote, Field } from '../../components/ui/field';
+import { Badge } from '../../components/ui/primitives';
 import { isPlan, problemCode, requestSignUp } from './auth-api';
 import { useSession } from '../../lib/session';
 import { useDocumentTitle } from '../../lib/use-document-title';
@@ -50,35 +51,43 @@ export function SignupPage() {
 
   return (
     <>
-      <header className="stack">
-        <h1 className="h1">Create your workspace</h1>
-        <p>You will be the owner. You can invite people after the domain is connected.</p>
+      <header className="stack-2">
+        <div className="spread">
+          <h1 className="h2">Create workspace</h1>
+          <Badge tone="brand">{PLAN_TIER_LABEL[plan]}</Badge>
+        </div>
+        <p className="caption muted">
+          You will be the workspace owner. Connect your custom domain right after signing up.
+        </p>
       </header>
       <form className="stack" onSubmit={onSubmit} noValidate>
         <Field
-          label="Your name"
+          label="Full name"
           autoComplete="name"
+          placeholder="Ada Iyer"
           value={name}
           onChange={(event) => setName(event.target.value)}
           required
         />
         <Field
-          label="Organization"
+          label="Organization name"
           autoComplete="organization"
+          placeholder="Northwind Studio"
           value={organization}
           onChange={(event) => setOrganization(event.target.value)}
           required
         />
         <Field
-          label="Email"
+          label="Work email"
           type="email"
           autoComplete="email"
+          placeholder="ada@northwind.example"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           required
         />
         <Field
-          label="Password"
+          label="Password (8–128 characters)"
           type="password"
           autoComplete="new-password"
           value={password}
@@ -87,11 +96,14 @@ export function SignupPage() {
         />
         {code ? <ErrorNote code={code} /> : null}
         <button className="btn btn-primary" type="submit" disabled={pending}>
-          {pending ? 'Creating workspace' : 'Create workspace'}
+          {pending ? 'Creating workspace...' : 'Create workspace'}
         </button>
       </form>
-      <p>
-        Already have a mailbox? <Link to="/login">Sign in</Link>
+      <p className="caption muted">
+        Already have a mailbox?{' '}
+        <Link className="strong" to="/login">
+          Sign in
+        </Link>
       </p>
     </>
   );

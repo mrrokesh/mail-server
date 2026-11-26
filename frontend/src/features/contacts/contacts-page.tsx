@@ -1,19 +1,35 @@
-import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import type { ErrorCode } from '@mrrokesh/shared';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Building2, Mail, Phone, UserPlus, Users } from 'lucide-react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import { z } from 'zod';
+import { ErrorNote, Field, TextArea } from '../../components/ui/field';
+import { Icon } from '../../components/ui/icon';
+import { Avatar, Badge, EmptyState } from '../../components/ui/primitives';
+import { Sheet } from '../../components/ui/sheet';
 import { SkeletonLines } from '../../components/ui/skeleton';
-import { readOrFallback } from '../../lib/api';
+import { ApiProblem, readOrFallback, writeOrFallback } from '../../lib/api';
 import { MOCK_CONTACTS, MOCK_THREADS } from '../../lib/mock-data';
 import { parseContacts, parseThreads, type Contact, type ContactBook } from '../../lib/schemas';
 import { useDocumentTitle } from '../../lib/use-document-title';
 
 const BOOKS: { id: ContactBook; label: string }[] = [
-  { id: 'directory', label: 'Directory' },
-  { id: 'personal', label: 'Personal' },
+  { id: 'directory', label: 'Organization Directory' },
+  { id: 'personal', label: 'Personal Contacts' },
 ];
+
+const contactCreateSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  email: z.string().trim().email(),
+  phone: z.string().trim().max(40).optional(),
+  role: z.string().trim().max(60).optional(),
+  notes: z.string().trim().max(500).optional(),
+});
 
 export function ContactsPage() {
   useDocumentTitle('Contacts');
+  const queryClient = useQueryClient();
   const contacts = useQuery({
     queryKey: ['contacts'],
     queryFn: () => readOrFallback('/contacts', parseContacts, MOCK_CONTACTS),
@@ -28,6 +44,14 @@ export function ContactsPage() {
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pane, setPane] = useState<'folders' | 'list' | 'read'>('list');
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [role, setRole] = useState('');
+  const [notes, setNotes] = useState('');
+  const [code, setCode] = useState<ErrorCode | null>(null);
+  const [pending, setPending] = useState(false);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -46,26 +70,71 @@ export function ContactsPage() {
     return thread.fromEmail === selected.email || thread.toEmail === selected.email;
   });
 
+  async function onCreate(event: FormEvent) {
+    event.preventDefault();
+    const parsed = contactCreateSchema.safeParse({ name, email, phone, role, notes });
+    if (!parsed.success) {
+      setCode('API-VAL-001');
+      return;
+    }
+    setPending(true);
+    setCode(null);
+    try {
+      await writeOrFallback(
+        '/contacts',
+        { method: 'POST', body: JSON.stringify(parsed.data) },
+        (input) => Boolean(input),
+        () => false,
+      );
+      await queryClient.invalidateQueries({ queryKey: ['contacts'] });
+      setBook('personal');
+      setOpen(false);
+      setName('');
+      setEmail('');
+      setPhone('');
+      setRole('');
+      setNotes('');
+    } catch (error) {
+      setCode(error instanceof ApiProblem ? error.code : 'API-SRV-500');
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <div className="panes" data-pane={pane}>
       <h1 className="visually-hidden">Contacts</h1>
       <section className="pane pane-nav" aria-label="Address books">
-        {BOOKS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className="folder"
-            aria-current={book === item.id ? 'page' : undefined}
-            onClick={() => {
-              setBook(item.id);
-              setSelectedId(null);
-              setPane('list');
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
+        <button
+          type="button"
+          className="btn btn-primary folder-compose"
+          onClick={() => setOpen(true)}
+        >
+          <Icon icon={UserPlus} size={17} />
+          <span>Add contact</span>
+        </button>
+        <div className="folder-list">
+          {BOOKS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className="folder"
+              aria-current={book === item.id ? 'page' : undefined}
+              onClick={() => {
+                setBook(item.id);
+                setSelectedId(null);
+                setPane('list');
+              }}
+            >
+              <span className="cluster-2">
+                <Icon icon={item.id === 'directory' ? Building2 : Users} size={17} />
+                <span>{item.label}</span>
+              </span>
+            </button>
+          ))}
+        </div>
       </section>
+
       <section className="pane pane-list" aria-label="People">
         <div className="pane-head">
           <label className="visually-hidden" htmlFor="people-search">
@@ -80,9 +149,22 @@ export function ContactsPage() {
             onChange={(event) => setQuery(event.target.value)}
           />
         </div>
-        {contacts.isPending ? <SkeletonLines /> : null}
+        {contacts.isPending ? (
+          <div className="pane-note">
+            <SkeletonLines count={4} />
+          </div>
+        ) : null}
         {visible.length === 0 && !contacts.isPending ? (
-          <p className="read muted">No one matches that search.</p>
+          <EmptyState
+            icon={Users}
+            title="No contacts yet"
+            description="Add a personal contact or view team members in Organization Directory."
+            action={
+              <button type="button" className="btn btn-quiet btn-sm" onClick={() => setOpen(true)}>
+                Add contact
+              </button>
+            }
+          />
         ) : null}
         {visible.map((person) => (
           <PersonButton
@@ -96,6 +178,7 @@ export function ContactsPage() {
           />
         ))}
       </section>
+
       <article className="pane pane-read">
         {selected ? (
           <div className="read">
@@ -106,25 +189,82 @@ export function ContactsPage() {
             >
               Back to people
             </button>
-            <h2 className="h3">{selected.name}</h2>
-            <p className="break">{selected.email}</p>
-            {selected.phone ? <p>{selected.phone}</p> : null}
-            <p className="caption muted">{selected.role}</p>
-            <p>{selected.notes}</p>
-            <h3 className="strong">Recent mail</h3>
-            {related.length === 0 ? (
-              <p className="muted">No messages with this address in the current list.</p>
-            ) : null}
-            {related.map((thread) => (
-              <Link key={thread.id} to={`/mail?thread=${thread.id}`}>
-                {thread.subject}
+            <div className="spread">
+              <div className="cluster">
+                <Avatar name={selected.name} size="lg" />
+                <div>
+                  <h2 className="h3">{selected.name}</h2>
+                  <p className="caption muted">{selected.role || 'Contact'}</p>
+                </div>
+              </div>
+              <Link
+                className="btn btn-primary btn-sm"
+                to={`/mail?compose=1&to=${encodeURIComponent(selected.email)}`}
+              >
+                <Icon icon={Mail} size={15} />
+                <span>Send mail</span>
               </Link>
-            ))}
+            </div>
+            <div className="card stack-3">
+              <div className="cluster">
+                <Icon icon={Mail} size={16} />
+                <span className="caption break">{selected.email}</span>
+              </div>
+              {selected.phone ? (
+                <div className="cluster">
+                  <Icon icon={Phone} size={16} />
+                  <span className="caption">{selected.phone}</span>
+                </div>
+              ) : null}
+              {selected.notes ? <p className="caption muted">{selected.notes}</p> : null}
+            </div>
+            <div className="stack-2">
+              <h3 className="strong">Recent conversations</h3>
+              {related.length === 0 ? (
+                <p className="caption muted">No messages with this address yet.</p>
+              ) : (
+                related.map((thread) => (
+                  <Link
+                    key={thread.id}
+                    to={`/mail?thread=${thread.id}`}
+                    className="folder"
+                    style={{ border: '1px solid var(--color-border)' }}
+                  >
+                    <span className="truncate">{thread.subject}</span>
+                    <Badge>{thread.folder}</Badge>
+                  </Link>
+                ))
+              )}
+            </div>
           </div>
         ) : (
-          <p className="read muted">Select a person.</p>
+          <EmptyState
+            icon={Users}
+            title="Select a contact"
+            description="Choose someone from the directory or personal address book to inspect details."
+          />
         )}
       </article>
+
+      <Sheet open={open} title="Add contact" onClose={() => setOpen(false)}>
+        <form className="sheet-form" onSubmit={(e) => void onCreate(e)} noValidate>
+          <Field label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
+          <Field
+            label="Email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <Field label="Phone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Field label="Role or company" value={role} onChange={(e) => setRole(e.target.value)} />
+          <TextArea label="Notes" value={notes} onChange={(e) => setNotes(e.target.value)} />
+          {code ? <ErrorNote code={code} /> : null}
+          <button className="btn btn-primary" type="submit" disabled={pending}>
+            {pending ? 'Saving...' : 'Save contact'}
+          </button>
+        </form>
+      </Sheet>
     </div>
   );
 }
@@ -140,7 +280,10 @@ function PersonButton({
 }) {
   return (
     <button type="button" className="person" aria-selected={selected} onClick={onSelect}>
-      <span>{person.name}</span>
+      <span className="cluster-2 truncate">
+        <Avatar name={person.name} size="sm" />
+        <span className="truncate">{person.name}</span>
+      </span>
       <span className="caption muted">{person.role}</span>
     </button>
   );

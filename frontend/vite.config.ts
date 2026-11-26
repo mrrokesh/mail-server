@@ -31,6 +31,8 @@ export default defineConfig({
     },
     proxy: {
       '/api': 'http://127.0.0.1:4000',
+      '/.well-known': 'http://127.0.0.1:4000',
+      '/mail/config-v1.1.xml': 'http://127.0.0.1:4000',
     },
   },
 });

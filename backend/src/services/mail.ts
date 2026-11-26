@@ -182,7 +182,7 @@ export async function listMailboxMessages(
   }));
 }
 
-export type ClientFolder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'spam';
+export type ClientFolder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash' | 'snoozed';
 
 function escapeHtml(value: string): string {
   return value
@@ -192,7 +192,22 @@ function escapeHtml(value: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function presentClientMessage(row: StoredMessage, folder: ClientFolder, fromName: string) {
+function presentClientMessage(
+  row: StoredMessage,
+  defaultFolder: ClientFolder,
+  fromName: string,
+  state?: {
+    folder: ClientFolder;
+    unread: boolean;
+    starred: boolean;
+    pinned: boolean;
+    muted: boolean;
+    snoozeUntil: string | null;
+    labels: string[];
+    internalNote: string | null;
+  },
+) {
+  const folder = state?.folder ?? defaultFolder;
   const mailbox = folder === 'spam' ? 'inbox' : folder;
   return {
     id: row.id,
@@ -208,11 +223,17 @@ function presentClientMessage(row: StoredMessage, folder: ClientFolder, fromName
     fromAddress: row.from,
     fromEmail: row.from,
     toEmail: row.to[0] ?? '',
-    preview: row.text.slice(0, 120),
+    preview: row.text.slice(0, 140),
     bodyText: row.text,
     bodyHtml: `<p>${escapeHtml(row.text)}</p>`,
     receivedAt: row.at,
-    unread: folder === 'inbox',
+    unread: state ? state.unread : folder === 'inbox',
+    starred: state?.starred ?? false,
+    pinned: state?.pinned ?? false,
+    muted: state?.muted ?? false,
+    snoozeUntil: state?.snoozeUntil ?? null,
+    labels: state?.labels ?? [],
+    internalNote: state?.internalNote ?? null,
     hasRemoteImages: false,
   };
 }
@@ -253,21 +274,59 @@ export async function listClientMessages(
     if (!one) throw new ApiError('API-RES-404');
     targets = [one];
   }
+  const states = new Map(deps.workspace.listMailStates(tenant.org.id).map((s) => [s.messageId, s]));
   const messages = [];
   for (const mailbox of targets) {
     const rows = await deps.mail.listMessages(tenant.org.id, mailbox.stalwartPrincipalId);
     for (const row of rows) {
-      const folder = row.from.toLowerCase() === mailbox.address ? 'sent' : 'inbox';
-      if (filter.mailbox && folder !== filter.mailbox) continue;
+      const defaultFolder: ClientFolder =
+        row.from.toLowerCase() === mailbox.address ? 'sent' : 'inbox';
+      const state = states.get(row.id);
+      const effectiveFolder = state?.folder ?? defaultFolder;
+      if (filter.mailbox && effectiveFolder !== filter.mailbox) continue;
       const fromName =
         names.get(row.from.toLowerCase()) ??
         (row.from.toLowerCase() === tenant.user.email.toLowerCase()
           ? tenant.user.fullName
           : (row.from.split('@')[0] ?? row.from));
-      messages.push(presentClientMessage(row, folder, fromName));
+      messages.push(presentClientMessage(row, defaultFolder, fromName, state));
     }
   }
-  messages.sort((left, right) => (left.receivedAt < right.receivedAt ? 1 : -1));
+  if (!filter.mailbox || filter.mailbox === 'drafts') {
+    for (const draft of deps.workspace.listMailDrafts(tenant.org.id, tenant.user.id)) {
+      messages.push({
+        id: draft.id,
+        from: draft.from,
+        to: draft.to,
+        subject: draft.subject || '(No subject)',
+        text: draft.bodyText,
+        sizeBytes: Buffer.byteLength(draft.bodyText, 'utf8'),
+        at: draft.updatedAt,
+        folder: 'drafts' as ClientFolder,
+        mailbox: 'drafts' as ClientFolder,
+        fromName: tenant.user.fullName,
+        fromAddress: draft.from,
+        fromEmail: draft.from,
+        toEmail: draft.to[0] ?? '',
+        preview: draft.bodyText.slice(0, 140),
+        bodyText: draft.bodyText,
+        bodyHtml: draft.bodyHtml || `<p>${escapeHtml(draft.bodyText)}</p>`,
+        receivedAt: draft.updatedAt,
+        unread: false,
+        starred: false,
+        pinned: false,
+        muted: false,
+        snoozeUntil: null,
+        labels: [],
+        internalNote: null,
+        hasRemoteImages: false,
+      });
+    }
+  }
+  messages.sort((left, right) => {
+    if (left.pinned !== right.pinned) return left.pinned ? -1 : 1;
+    return left.receivedAt < right.receivedAt ? 1 : -1;
+  });
   return { messages };
 }
 

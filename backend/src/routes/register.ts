@@ -817,7 +817,7 @@ export function registerApi(app: FastifyInstance): void {
     return openSession(app.deps, tenant);
   });
 
-  const folderSchema = z.enum(['inbox', 'sent', 'drafts', 'archive', 'spam']);
+  const folderSchema = z.enum(['inbox', 'sent', 'drafts', 'archive', 'spam', 'trash', 'snoozed']);
 
   app.get('/api/v1/mail/threads', async (request) => {
     const tenant = await loadTenant(request, 'session');

@@ -317,6 +317,7 @@ export interface ControlStore {
   countActiveUsers(organizationId: string): Promise<number>;
   findOrgBySlug(slug: string): Promise<OrgRecord | null>;
   findOrg(organizationId: string): Promise<OrgRecord | null>;
+  listAllOrgs?(): Promise<OrgRecord[]>;
   updateOrg(organizationId: string, patch: Partial<OrgRecord>): Promise<OrgRecord | null>;
   findSubscription(organizationId: string): Promise<SubscriptionRecord | null>;
   updateSubscription(

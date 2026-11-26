@@ -2,7 +2,7 @@ import type { ErrorCode, PlanTier } from '@mrrokesh/shared';
 import { PLAN_TIERS, isErrorCode } from '@mrrokesh/shared';
 import { z } from 'zod';
 
-export const FOLDERS = ['inbox', 'sent', 'drafts', 'archive', 'spam'] as const;
+export const FOLDERS = ['inbox', 'sent', 'drafts', 'snoozed', 'archive', 'spam', 'trash'] as const;
 export type FolderId = (typeof FOLDERS)[number];
 
 export const CALENDARS = ['personal', 'work', 'holidays'] as const;
@@ -22,8 +22,15 @@ export interface MailThread {
   toEmail: string;
   preview: string;
   bodyHtml: string;
+  bodyText?: string;
   receivedAt: string;
   unread: boolean;
+  starred?: boolean;
+  pinned?: boolean;
+  muted?: boolean;
+  snoozeUntil?: string | null;
+  labels?: string[];
+  internalNote?: string | null;
   hasRemoteImages: boolean;
 }
 
@@ -92,6 +99,7 @@ export interface AuthUser {
   organization: string;
   plan: PlanTier;
   role: string;
+  isOperator?: boolean;
 }
 
 export interface AuthResult {
@@ -108,8 +116,15 @@ const threadSchema = z.object({
   toEmail: z.string(),
   preview: z.string(),
   bodyHtml: z.string(),
+  bodyText: z.string().optional(),
   receivedAt: z.string(),
   unread: z.boolean(),
+  starred: z.boolean().optional(),
+  pinned: z.boolean().optional(),
+  muted: z.boolean().optional(),
+  snoozeUntil: z.string().nullable().optional(),
+  labels: z.array(z.string()).optional(),
+  internalNote: z.string().nullable().optional(),
   hasRemoteImages: z.boolean().optional(),
 });
 
@@ -248,6 +263,7 @@ export function parseAuth(input: unknown): AuthResult | null {
         organization: z.string().optional(),
         plan: planIdSchema.optional(),
         role: z.string(),
+        isOperator: z.boolean().optional(),
       }),
     })
     .safeParse(body);
@@ -263,6 +279,9 @@ export function parseAuth(input: unknown): AuthResult | null {
       organization: parsed.data.user.organization ?? parsed.data.organization?.name ?? 'Workspace',
       plan: parsed.data.user.plan ?? 'free',
       role: parsed.data.user.role,
+      ...(parsed.data.user.isOperator !== undefined
+        ? { isOperator: parsed.data.user.isOperator }
+        : {}),
     },
   };
 }

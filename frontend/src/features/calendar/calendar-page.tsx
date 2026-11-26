@@ -1,18 +1,25 @@
+import type { ErrorCode } from '@mrrokesh/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  MapPin,
+  Plus,
+} from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { z } from 'zod';
-import { Icon } from '../../components/ui/icon';
 import { ErrorNote, Field, SelectField } from '../../components/ui/field';
+import { Icon } from '../../components/ui/icon';
+import { Badge, EmptyState } from '../../components/ui/primitives';
 import { Sheet } from '../../components/ui/sheet';
 import { SkeletonLines } from '../../components/ui/skeleton';
 import { ApiProblem, readOrFallback, writeOrFallback } from '../../lib/api';
-import { useDataSource } from '../../lib/data-source';
 import { formatDay, formatMonth, isoDate, monthCells, sameDay } from '../../lib/dates';
 import { MOCK_EVENTS } from '../../lib/mock-data';
 import { parseEvent, parseEvents, type CalendarEvent, type CalendarId } from '../../lib/schemas';
 import { useDocumentTitle } from '../../lib/use-document-title';
-import type { ErrorCode } from '@mrrokesh/shared';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -28,7 +35,6 @@ const eventSchema = z
 
 export function CalendarPage() {
   useDocumentTitle('Calendar');
-  const source = useDataSource();
   const queryClient = useQueryClient();
   const events = useQuery({
     queryKey: ['calendar', 'events'],
@@ -108,53 +114,74 @@ export function CalendarPage() {
     <div className="panes" data-pane={pane}>
       <h1 className="visually-hidden">Calendar</h1>
       <section className="pane pane-nav" aria-label="Calendars">
-        <div className="pane-head">
-          <p className="strong">Calendars</p>
+        <button
+          type="button"
+          className="btn btn-primary folder-compose"
+          onClick={() => setOpen(true)}
+        >
+          <Icon icon={Plus} size={17} />
+          <span>Add event</span>
+        </button>
+        <div className="pane-note stack-2">
+          <p className="caption strong muted">My calendars</p>
+          {(
+            [
+              ['work', 'Work'],
+              ['personal', 'Personal'],
+              ['holidays', 'India holidays'],
+            ] as const
+          ).map(([id, label]) => (
+            <label key={id} className="check" style={{ paddingInline: 0 }}>
+              <input
+                type="checkbox"
+                checked={visible[id]}
+                onChange={() => setVisible((current) => ({ ...current, [id]: !current[id] }))}
+              />
+              <span>{label}</span>
+            </label>
+          ))}
         </div>
-        {(
-          [
-            ['work', 'Work'],
-            ['personal', 'Personal'],
-            ['holidays', 'India holidays'],
-          ] as const
-        ).map(([id, label]) => (
-          <label key={id} className="check">
-            <input
-              type="checkbox"
-              checked={visible[id]}
-              onChange={() => setVisible((current) => ({ ...current, [id]: !current[id] }))}
-            />
-            {label}
-          </label>
-        ))}
-        {source === 'preview' ? (
-          <p className="caption muted pane-note">Holiday dates in this preview are samples.</p>
-        ) : null}
       </section>
-      <section className="pane pane-list" aria-label="Month">
-        <div className="pane-head">
+
+      <section className="pane pane-list" aria-label="Month grid">
+        <div className="pane-head pane-head-inline">
+          <div className="cluster-2">
+            <button
+              type="button"
+              className="icon-btn icon-btn-sm"
+              aria-label="Previous month"
+              onClick={() => shift(-1)}
+            >
+              <Icon icon={ChevronLeft} size={18} />
+            </button>
+            <h2 className="h3">{formatMonth(cursor)}</h2>
+            <button
+              type="button"
+              className="icon-btn icon-btn-sm"
+              aria-label="Next month"
+              onClick={() => shift(1)}
+            >
+              <Icon icon={ChevronRight} size={18} />
+            </button>
+          </div>
           <button
             type="button"
-            className="icon-btn"
-            aria-label="Previous month"
-            onClick={() => shift(-1)}
+            className="btn btn-quiet btn-sm"
+            onClick={() => {
+              setCursor(new Date(today.getFullYear(), today.getMonth(), 1));
+              setSelected(isoDate(today));
+            }}
           >
-            <Icon icon={ChevronLeft} />
-          </button>
-          <h2 className="h2">{formatMonth(cursor)}</h2>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label="Next month"
-            onClick={() => shift(1)}
-          >
-            <Icon icon={ChevronRight} />
-          </button>
-          <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
-            Add event
+            Today
           </button>
         </div>
-        {events.isPending ? <SkeletonLines count={2} /> : null}
+
+        {events.isPending ? (
+          <div className="pane-note">
+            <SkeletonLines count={3} />
+          </div>
+        ) : null}
+
         <div className="month-grid">
           {WEEKDAYS.map((day) => (
             <div key={day} className="weekday caption">
@@ -163,29 +190,49 @@ export function CalendarPage() {
           ))}
           {cells.map((cell) => {
             const iso = isoDate(cell);
-            const count = shown.filter((item) => item.date === iso).length;
+            const dayEvents = shown.filter((item) => item.date === iso);
             const outside = cell.getMonth() !== cursor.getMonth();
+            const isToday = sameDay(iso, today);
             return (
               <button
                 key={iso}
                 type="button"
                 className={outside ? 'day-cell is-outside' : 'day-cell'}
                 aria-pressed={iso === selected}
-                aria-current={sameDay(iso, today) ? 'date' : undefined}
+                aria-current={isToday ? 'date' : undefined}
                 onClick={() => {
                   setSelected(iso);
                   setPane('read');
                 }}
               >
-                <span>{cell.getDate()}</span>
-                {count > 0 ? <span className="caption">{count}</span> : null}
+                <span className={isToday ? 'badge badge-brand tabular' : 'caption tabular'}>
+                  {cell.getDate()}
+                </span>
+                {dayEvents.slice(0, 2).map((item) => (
+                  <span
+                    key={item.id}
+                    className={`day-pill${
+                      item.calendar === 'personal'
+                        ? ' is-personal'
+                        : item.calendar === 'holidays'
+                          ? ' is-holidays'
+                          : ''
+                    }`}
+                  >
+                    {item.title}
+                  </span>
+                ))}
+                {dayEvents.length > 2 ? (
+                  <span className="caption muted">+{dayEvents.length - 2} more</span>
+                ) : null}
               </button>
             );
           })}
         </div>
       </section>
-      <section className="pane pane-read" aria-label="Day">
-        <div className="read">
+
+      <section className="pane pane-read" aria-label="Day agenda">
+        <div className="pane-head">
           <button
             type="button"
             className="btn btn-text mobile-only"
@@ -193,40 +240,88 @@ export function CalendarPage() {
           >
             Back to month
           </button>
-          <h3 className="strong">{formatDay(selected)}</h3>
-          {agenda.length === 0 ? <p className="muted">Nothing scheduled.</p> : null}
-          {agenda.map((item) => (
-            <article key={item.id} className="stack">
-              <p className="strong">{item.title}</p>
-              <p className="caption muted">
-                {item.start && item.end ? `${item.start}–${item.end}` : 'All day'}
-                {item.location ? ` · ${item.location}` : ''}
-              </p>
-            </article>
-          ))}
+          <h3 className="h3">{formatDay(selected)}</h3>
+        </div>
+        <div className="read">
+          {agenda.length === 0 ? (
+            <EmptyState
+              icon={CalendarIcon}
+              title="Nothing scheduled"
+              description="No events on this date. Add a meeting or focus block."
+              action={
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => {
+                    setDate(selected);
+                    setOpen(true);
+                  }}
+                >
+                  Add event
+                </button>
+              }
+            />
+          ) : (
+            agenda.map((item) => (
+              <article key={item.id} className="card stack-2">
+                <div className="spread">
+                  <p className="strong">{item.title}</p>
+                  <Badge
+                    tone={
+                      item.calendar === 'holidays'
+                        ? 'warning'
+                        : item.calendar === 'personal'
+                          ? 'success'
+                          : 'brand'
+                    }
+                  >
+                    {item.calendar}
+                  </Badge>
+                </div>
+                <p className="caption muted cluster-2">
+                  <Icon icon={Clock} size={14} />
+                  <span>{item.start && item.end ? `${item.start} – ${item.end}` : 'All day'}</span>
+                </p>
+                {item.location ? (
+                  <p className="caption muted cluster-2">
+                    <Icon icon={MapPin} size={14} />
+                    <span>{item.location}</span>
+                  </p>
+                ) : null}
+              </article>
+            ))
+          )}
         </div>
       </section>
+
       <Sheet open={open} title="New event" onClose={() => setOpen(false)}>
         <form className="sheet-form" onSubmit={onSave} noValidate>
-          <Field label="Title" value={title} onChange={(event) => setTitle(event.target.value)} />
+          <Field
+            label="Event title"
+            placeholder="Design sync"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
           <Field
             label="Date"
             type="date"
             value={date}
             onChange={(event) => setDate(event.target.value)}
           />
-          <Field
-            label="Start"
-            type="time"
-            value={start}
-            onChange={(event) => setStart(event.target.value)}
-          />
-          <Field
-            label="End"
-            type="time"
-            value={end}
-            onChange={(event) => setEnd(event.target.value)}
-          />
+          <div className="two-col">
+            <Field
+              label="Start"
+              type="time"
+              value={start}
+              onChange={(event) => setStart(event.target.value)}
+            />
+            <Field
+              label="End"
+              type="time"
+              value={end}
+              onChange={(event) => setEnd(event.target.value)}
+            />
+          </div>
           <SelectField
             label="Calendar"
             value={calendar}
@@ -239,7 +334,7 @@ export function CalendarPage() {
           </SelectField>
           {code ? <ErrorNote code={code} /> : null}
           <button className="btn btn-primary" type="submit" disabled={pending}>
-            {pending ? 'Saving event' : 'Save event'}
+            {pending ? 'Saving event...' : 'Save event'}
           </button>
         </form>
       </Sheet>

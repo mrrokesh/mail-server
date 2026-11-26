@@ -1,10 +1,15 @@
+import type { ErrorCode } from '@mrrokesh/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Hash, MessageSquare, Plus, Send } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { z } from 'zod';
-import { ErrorNote, Field, SelectField, TextArea } from '../../components/ui/field';
+import { ErrorNote, Field, SelectField } from '../../components/ui/field';
+import { Icon } from '../../components/ui/icon';
+import { Badge, EmptyState } from '../../components/ui/primitives';
+import { Sheet } from '../../components/ui/sheet';
 import { ApiProblem, readOrFallback, writeOrFallback } from '../../lib/api';
+import { formatWhen } from '../../lib/dates';
 import { useDocumentTitle } from '../../lib/use-document-title';
-import type { ErrorCode } from '@mrrokesh/shared';
 
 const conversationSchema = z.object({
   id: z.string(),
@@ -30,7 +35,7 @@ const listSchema = z.object({
 type Conversation = z.infer<typeof conversationSchema>;
 
 export function ChatPage() {
-  useDocumentTitle('Chat');
+  useDocumentTitle('Team Chat');
   const queryClient = useQueryClient();
   const list = useQuery({
     queryKey: ['chat', 'conversations'],
@@ -45,12 +50,14 @@ export function ChatPage() {
       ),
   });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<'direct' | 'group' | 'channel'>('channel');
   const [title, setTitle] = useState('');
   const [memberId, setMemberId] = useState('');
   const [body, setBody] = useState('');
   const [threadRootId, setThreadRootId] = useState<string | null>(null);
   const [code, setCode] = useState<ErrorCode | null>(null);
+
   const conversations = list.data?.conversations ?? [];
   const selected = conversations.find((row) => row.id === selectedId) ?? conversations[0] ?? null;
 
@@ -94,6 +101,7 @@ export function ChatPage() {
         return;
       }
       setTitle('');
+      setOpen(false);
       setSelectedId(created.data.id);
       await queryClient.invalidateQueries({ queryKey: ['chat', 'conversations'] });
     } catch (error) {
@@ -103,10 +111,10 @@ export function ChatPage() {
 
   async function sendMessage(event: FormEvent) {
     event.preventDefault();
-    if (!selected) return;
+    if (!selected || !body.trim()) return;
     setCode(null);
     try {
-      const sent = await writeOrFallback(
+      await writeOrFallback(
         `/chat/conversations/${selected.id}/messages`,
         {
           method: 'POST',
@@ -118,10 +126,6 @@ export function ChatPage() {
         (input) => (messageSchema.safeParse(input).success ? true : null),
         () => false,
       );
-      if (!sent.data) {
-        setCode('API-VAL-001');
-        return;
-      }
       setBody('');
       setThreadRootId(null);
       await queryClient.invalidateQueries({ queryKey: ['chat', 'messages', selected.id] });
@@ -136,116 +140,154 @@ export function ChatPage() {
 
   return (
     <div className="panes-two">
-      <section className="pane pane-list" aria-label="Conversations">
+      <section className="pane pane-list" aria-label="Channels">
         <div className="pane-head">
-          <h1 className="h3">Chat</h1>
+          <h1 className="h3">Team Chat</h1>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
+            <Icon icon={Plus} size={15} />
+            <span>New channel</span>
+          </button>
         </div>
-        <p className="pane-note caption">
-          Direct messages, groups, channels, and threads on {list.data?.engine ?? 'mrrokesh-chat'}.
-          History is kept with the workspace.
-        </p>
         {list.isError ? (
           <div className="pane-note">
             <ErrorNote code={list.error instanceof ApiProblem ? list.error.code : 'API-SRV-500'} />
           </div>
         ) : null}
-        <form className="stack pane-note" onSubmit={(event) => void createConversation(event)}>
-          <SelectField
-            label="Kind"
-            value={kind}
-            onChange={(event) => setKind(event.target.value as Conversation['kind'])}
-          >
-            <option value="channel">Channel</option>
-            <option value="group">Group</option>
-            <option value="direct">Direct</option>
-          </SelectField>
-          <Field
-            label="Title"
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            required
+        {conversations.length === 0 && !list.isPending && !list.isError ? (
+          <EmptyState
+            icon={MessageSquare}
+            title="No channels yet"
+            description="Create a channel or direct message for your Business workspace."
           />
-          <Field
-            label="Other person id"
-            value={memberId}
-            onChange={(event) => setMemberId(event.target.value)}
-          />
-          <button className="btn btn-quiet" type="submit">
-            Start chat
-          </button>
-        </form>
+        ) : null}
         {conversations.map((row) => (
           <button
             key={row.id}
             type="button"
-            className="thread"
+            className="domain-row"
             aria-selected={selected?.id === row.id}
             onClick={() => setSelectedId(row.id)}
           >
-            <span>{row.title}</span>
-            <span className="caption muted">{row.kind}</span>
+            <span className="cluster-2 truncate">
+              <Icon icon={Hash} size={15} />
+              <span className="strong truncate">{row.title}</span>
+            </span>
+            <Badge>{row.kind}</Badge>
           </button>
         ))}
       </section>
-      <section className="pane pane-read" aria-label="Messages">
+
+      <section className="pane pane-read" aria-label="Conversation">
         {selected ? (
-          <>
-            <div className="pane-head">
+          <div className="read" style={{ height: '100%', gridTemplateRows: 'auto 1fr auto' }}>
+            <div
+              className="spread"
+              style={{ borderBottom: '1px solid var(--color-border)', paddingBottom: 12 }}
+            >
               <h2 className="h3">{selected.title}</h2>
+              <Badge tone="brand">{selected.kind}</Badge>
             </div>
-            <div className="pane-note stack">
-              {roots.length === 0 ? <p>No messages yet.</p> : null}
+            <div className="chat-stream">
+              {roots.length === 0 ? (
+                <p className="caption muted">No messages yet. Say hello below.</p>
+              ) : null}
               {roots.map((row) => (
-                <article key={row.id} className="stack">
-                  <p>{row.body}</p>
-                  <button
-                    type="button"
-                    className="btn btn-text"
-                    onClick={() => setThreadRootId(row.id)}
-                  >
-                    Reply in thread
-                  </button>
+                <article key={row.id} className="chat-bubble">
+                  <div className="spread">
+                    <span className="caption strong">{row.authorUserId.slice(0, 8)}</span>
+                    <span className="caption muted tabular">{formatWhen(row.createdAt)}</span>
+                  </div>
+                  <p className="caption">{row.body}</p>
+                  <div>
+                    <button
+                      type="button"
+                      className="btn btn-text"
+                      style={{ minHeight: 28, paddingInline: 0 }}
+                      onClick={() => setThreadRootId(row.id)}
+                    >
+                      Reply in thread
+                    </button>
+                  </div>
                   {replies(row.id).map((reply) => (
-                    <p key={reply.id} className="caption">
+                    <p
+                      key={reply.id}
+                      className="caption muted"
+                      style={{ paddingLeft: 12, borderLeft: '2px solid var(--color-border)' }}
+                    >
                       {reply.body}
                     </p>
                   ))}
                 </article>
               ))}
-              <form className="stack" onSubmit={(event) => void sendMessage(event)}>
-                {threadRootId ? (
-                  <p className="caption">
-                    Replying in a thread.{' '}
-                    <button
-                      type="button"
-                      className="btn btn-text"
-                      onClick={() => setThreadRootId(null)}
-                    >
-                      Cancel reply
-                    </button>
-                  </p>
-                ) : null}
-                <TextArea
-                  label="Message"
+            </div>
+            <form className="stack-2" onSubmit={(event) => void sendMessage(event)}>
+              {threadRootId ? (
+                <div className="spread">
+                  <span className="caption muted">Replying inside thread</span>
+                  <button
+                    type="button"
+                    className="btn btn-text"
+                    onClick={() => setThreadRootId(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
+              <div className="cluster">
+                <input
+                  className="input"
+                  style={{ flex: 1 }}
+                  placeholder={`Message #${selected.title}`}
                   value={body}
                   onChange={(event) => setBody(event.target.value)}
                   required
                 />
                 <button className="btn btn-primary" type="submit">
-                  Send message
+                  <Icon icon={Send} size={15} />
+                  <span>Send</span>
                 </button>
-              </form>
-            </div>
-          </>
-        ) : (
-          <p className="pane-note">Start a channel, group, or direct chat.</p>
-        )}
-        {code ? (
-          <div className="pane-note">
-            <ErrorNote code={code} />
+              </div>
+              {code ? <ErrorNote code={code} /> : null}
+            </form>
           </div>
-        ) : null}
+        ) : (
+          <EmptyState
+            icon={MessageSquare}
+            title="Select a channel"
+            description="Open a channel or start a new conversation with teammates."
+          />
+        )}
       </section>
+
+      <Sheet open={open} title="Start conversation" onClose={() => setOpen(false)}>
+        <form className="sheet-form" onSubmit={(event) => void createConversation(event)}>
+          <SelectField
+            label="Type"
+            value={kind}
+            onChange={(event) => setKind(event.target.value as Conversation['kind'])}
+          >
+            <option value="channel">Channel</option>
+            <option value="group">Group</option>
+            <option value="direct">Direct message</option>
+          </SelectField>
+          <Field
+            label="Title"
+            placeholder="engineering"
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            required
+          />
+          <Field
+            label="Member user ID (for Direct)"
+            value={memberId}
+            onChange={(event) => setMemberId(event.target.value)}
+          />
+          {code ? <ErrorNote code={code} /> : null}
+          <button className="btn btn-primary" type="submit">
+            Create conversation
+          </button>
+        </form>
+      </Sheet>
     </div>
   );
 }

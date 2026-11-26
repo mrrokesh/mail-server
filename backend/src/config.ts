@@ -30,6 +30,7 @@ export interface AppConfig {
   webauthnRpName: string;
   webauthnOrigin: string;
   webOrigin: string;
+  operatorEmails: string[];
   rateLimits: {
     login: RateLimitRule;
     signup: RateLimitRule;
@@ -110,6 +111,10 @@ export function loadConfig(): AppConfig {
     webauthnRpName: 'MR Rokesh Mail',
     webauthnOrigin: process.env.WEB_URL ?? 'http://127.0.0.1:5173',
     webOrigin: process.env.WEB_URL ?? 'http://127.0.0.1:5173',
+    operatorEmails: (process.env.OPERATOR_EMAILS ?? '')
+      .split(',')
+      .map((s) => s.trim().toLowerCase())
+      .filter(Boolean),
     rateLimits: {
       login: { limit: 10, windowMs: 60_000 },
       signup: { limit: 20, windowMs: 60_000 },
@@ -143,6 +148,7 @@ export function testConfig(overrides: Partial<AppConfig> = {}): AppConfig {
     webauthnRpName: 'MR Rokesh Mail',
     webauthnOrigin: 'http://127.0.0.1:5173',
     webOrigin: 'http://127.0.0.1:5173',
+    operatorEmails: ['operator@mrrokesh.com'],
     rateLimits: {
       login: { limit: 1000, windowMs: 60_000 },
       signup: { limit: 1000, windowMs: 60_000 },

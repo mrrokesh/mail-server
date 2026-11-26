@@ -46,15 +46,18 @@ export function LoginPage() {
 
   return (
     <>
-      <header className="stack">
-        <h1 className="h1">Sign in</h1>
-        <p>Use the mailbox address and the account password for {brand.productName}.</p>
+      <header className="stack-2">
+        <h1 className="h2">Sign in</h1>
+        <p className="caption muted">
+          Access your {brand.productName} mailbox, calendar, and admin console.
+        </p>
       </header>
       <form className="stack" onSubmit={onSubmit} noValidate>
         <Field
-          label="Email"
+          label="Email address"
           type="email"
           autoComplete="username"
+          placeholder="ada@northwind.example"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
           required
@@ -69,15 +72,17 @@ export function LoginPage() {
         />
         {code ? <ErrorNote code={code} /> : null}
         <button className="btn btn-primary" type="submit" disabled={pending}>
-          {pending ? 'Signing in' : 'Sign in'}
+          {pending ? 'Signing in...' : 'Sign in'}
         </button>
-        <Link className="btn btn-text" to="/forgot-password">
-          Forgot password
-        </Link>
       </form>
-      <p>
-        New workspace? <Link to="/signup">Create workspace</Link>
-      </p>
+      <div className="spread">
+        <Link className="caption muted" to="/forgot-password">
+          Forgot password?
+        </Link>
+        <Link className="caption strong" to="/signup">
+          Create workspace
+        </Link>
+      </div>
     </>
   );
 }

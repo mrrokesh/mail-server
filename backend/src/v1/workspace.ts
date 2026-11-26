@@ -271,6 +271,121 @@ export interface CampaignSuppression {
   createdAt: string;
 }
 
+export type ExtendedFolder = 'inbox' | 'sent' | 'drafts' | 'archive' | 'spam' | 'trash' | 'snoozed';
+
+export interface MailMessageState {
+  id: string;
+  organizationId: string;
+  messageId: string;
+  folder: ExtendedFolder;
+  unread: boolean;
+  starred: boolean;
+  pinned: boolean;
+  muted: boolean;
+  snoozeUntil: string | null;
+  labels: string[];
+  internalNote: string | null;
+  updatedAt: string;
+}
+
+export interface MailDraft {
+  id: string;
+  organizationId: string;
+  userId: string;
+  from: string;
+  to: string[];
+  cc: string[];
+  bcc: string[];
+  subject: string;
+  bodyText: string;
+  bodyHtml: string;
+  inReplyTo: string | null;
+  updatedAt: string;
+}
+
+export interface MailTemplate {
+  id: string;
+  organizationId: string;
+  userId: string;
+  name: string;
+  category: string;
+  subject: string;
+  bodyText: string;
+  createdAt: string;
+}
+
+export interface MailRule {
+  id: string;
+  organizationId: string;
+  userId: string;
+  name: string;
+  enabled: boolean;
+  field: 'from' | 'to' | 'subject' | 'body';
+  operator: 'contains' | 'equals' | 'ends_with';
+  value: string;
+  action: 'move_folder' | 'add_label' | 'star' | 'mark_read';
+  actionTarget: string;
+  compiledSieve: string;
+  createdAt: string;
+}
+
+export interface MailUserPrefs {
+  organizationId: string;
+  userId: string;
+  signatureHtml: string;
+  vacationEnabled: boolean;
+  vacationSubject: string;
+  vacationInternal: string;
+  vacationExternal: string;
+  undoSendSec: number;
+  shortcutPreset: 'gmail' | 'outlook';
+  readingPane: 'right' | 'bottom' | 'off';
+  focusedInbox: boolean;
+}
+
+export interface PartnerProfile {
+  organizationId: string;
+  tier: 'authorized' | 'silver' | 'gold';
+  marginPercent: number;
+  companyLegalName: string;
+  gstin: string | null;
+  updatedAt: string;
+}
+
+export interface PartnerTenant {
+  id: string;
+  organizationId: string;
+  customerName: string;
+  primaryDomain: string;
+  planTier: 'starter' | 'business' | 'business_plus' | 'enterprise';
+  seats: number;
+  status: 'active' | 'trialing' | 'suspended';
+  loginHost: string | null;
+  createdAt: string;
+}
+
+export interface PartnerWebhook {
+  id: string;
+  organizationId: string;
+  url: string;
+  events: string[];
+  secretHint: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+export interface OperatorQueueItem {
+  id: string;
+  organizationId: string;
+  orgName: string;
+  category: 'abuse_spike' | 'spam_complaint' | 'bounce_rate' | 'trial_review';
+  summary: string;
+  severity: 'high' | 'medium' | 'low';
+  status: 'open' | 'resolved';
+  ipPool: 'trial' | 'shared' | 'dedicated';
+  createdAt: string;
+}
+
 export interface ModuleSnapshot {
   files: DriveFile[];
   shares: DriveShare[];
@@ -299,6 +414,15 @@ export interface ModuleSnapshot {
   sso: SsoState | null;
   scimTokens: ScimToken[];
   scimUsers: ScimUser[];
+  mailStates?: MailMessageState[];
+  mailDrafts?: MailDraft[];
+  mailTemplates?: MailTemplate[];
+  mailRules?: MailRule[];
+  mailPrefs?: MailUserPrefs[];
+  partnerProfile?: PartnerProfile | null;
+  partnerTenants?: PartnerTenant[];
+  partnerWebhooks?: PartnerWebhook[];
+  operatorQueue?: OperatorQueueItem[];
 }
 
 function blankCompliance(): ComplianceState {
@@ -338,6 +462,15 @@ export class WorkspaceStore {
   private readonly brands = new Map<string, PartnerBrand>();
   private readonly campaigns: CampaignRecord[] = [];
   private readonly suppressions: CampaignSuppression[] = [];
+  private readonly mailStates: MailMessageState[] = [];
+  private readonly mailDrafts: MailDraft[] = [];
+  private readonly mailTemplates: MailTemplate[] = [];
+  private readonly mailRules: MailRule[] = [];
+  private readonly mailPrefs: MailUserPrefs[] = [];
+  private readonly partnerProfiles = new Map<string, PartnerProfile>();
+  private readonly partnerTenants: PartnerTenant[] = [];
+  private readonly partnerWebhooks: PartnerWebhook[] = [];
+  private readonly operatorQueue: OperatorQueueItem[] = [];
 
   listFiles(organizationId: string): DriveFile[] {
     return this.files.filter((file) => file.organizationId === organizationId);
@@ -688,6 +821,198 @@ export class WorkspaceStore {
     this.suppressions.push(row);
   }
 
+  listMailStates(organizationId: string): MailMessageState[] {
+    return this.mailStates.filter((row) => row.organizationId === organizationId);
+  }
+
+  findMailState(organizationId: string, messageId: string): MailMessageState | null {
+    return (
+      this.mailStates.find(
+        (row) => row.organizationId === organizationId && row.messageId === messageId,
+      ) ?? null
+    );
+  }
+
+  upsertMailState(state: MailMessageState): MailMessageState {
+    const idx = this.mailStates.findIndex(
+      (row) => row.organizationId === state.organizationId && row.messageId === state.messageId,
+    );
+    if (idx >= 0) this.mailStates[idx] = state;
+    else this.mailStates.push(state);
+    return state;
+  }
+
+  listMailDrafts(organizationId: string, userId: string): MailDraft[] {
+    return this.mailDrafts.filter(
+      (row) => row.organizationId === organizationId && row.userId === userId,
+    );
+  }
+
+  findMailDraft(organizationId: string, userId: string, id: string): MailDraft | null {
+    return (
+      this.mailDrafts.find(
+        (row) => row.organizationId === organizationId && row.userId === userId && row.id === id,
+      ) ?? null
+    );
+  }
+
+  upsertMailDraft(draft: MailDraft): MailDraft {
+    const idx = this.mailDrafts.findIndex(
+      (row) => row.organizationId === draft.organizationId && row.id === draft.id,
+    );
+    if (idx >= 0) this.mailDrafts[idx] = draft;
+    else this.mailDrafts.push(draft);
+    return draft;
+  }
+
+  deleteMailDraft(organizationId: string, userId: string, id: string): boolean {
+    const idx = this.mailDrafts.findIndex(
+      (row) => row.organizationId === organizationId && row.userId === userId && row.id === id,
+    );
+    if (idx < 0) return false;
+    this.mailDrafts.splice(idx, 1);
+    return true;
+  }
+
+  listMailTemplates(organizationId: string, userId: string): MailTemplate[] {
+    return this.mailTemplates.filter(
+      (row) => row.organizationId === organizationId && row.userId === userId,
+    );
+  }
+
+  addMailTemplate(tpl: MailTemplate): void {
+    this.mailTemplates.push(tpl);
+  }
+
+  deleteMailTemplate(organizationId: string, userId: string, id: string): boolean {
+    const idx = this.mailTemplates.findIndex(
+      (row) => row.organizationId === organizationId && row.userId === userId && row.id === id,
+    );
+    if (idx < 0) return false;
+    this.mailTemplates.splice(idx, 1);
+    return true;
+  }
+
+  listMailRules(organizationId: string, userId: string): MailRule[] {
+    return this.mailRules.filter(
+      (row) => row.organizationId === organizationId && row.userId === userId,
+    );
+  }
+
+  addMailRule(rule: MailRule): void {
+    this.mailRules.push(rule);
+  }
+
+  findMailRule(organizationId: string, userId: string, id: string): MailRule | null {
+    return (
+      this.mailRules.find(
+        (row) => row.organizationId === organizationId && row.userId === userId && row.id === id,
+      ) ?? null
+    );
+  }
+
+  deleteMailRule(organizationId: string, userId: string, id: string): boolean {
+    const idx = this.mailRules.findIndex(
+      (row) => row.organizationId === organizationId && row.userId === userId && row.id === id,
+    );
+    if (idx < 0) return false;
+    this.mailRules.splice(idx, 1);
+    return true;
+  }
+
+  mailPrefsOf(organizationId: string, userId: string): MailUserPrefs {
+    const found = this.mailPrefs.find(
+      (row) => row.organizationId === organizationId && row.userId === userId,
+    );
+    if (found) return found;
+    const fresh: MailUserPrefs = {
+      organizationId,
+      userId,
+      signatureHtml: '',
+      vacationEnabled: false,
+      vacationSubject: 'Out of office',
+      vacationInternal: 'I am currently out of office and will reply upon return.',
+      vacationExternal: 'Thank you for your email. I am currently away and will respond soon.',
+      undoSendSec: 10,
+      shortcutPreset: 'gmail',
+      readingPane: 'right',
+      focusedInbox: true,
+    };
+    this.mailPrefs.push(fresh);
+    return fresh;
+  }
+
+  saveMailPrefs(prefs: MailUserPrefs): MailUserPrefs {
+    const idx = this.mailPrefs.findIndex(
+      (row) => row.organizationId === prefs.organizationId && row.userId === prefs.userId,
+    );
+    if (idx >= 0) this.mailPrefs[idx] = prefs;
+    else this.mailPrefs.push(prefs);
+    return prefs;
+  }
+
+  partnerProfileOf(organizationId: string, orgName: string): PartnerProfile {
+    const existing = this.partnerProfiles.get(organizationId);
+    if (existing) return existing;
+    const fresh: PartnerProfile = {
+      organizationId,
+      tier: 'authorized',
+      marginPercent: 20,
+      companyLegalName: orgName,
+      gstin: null,
+      updatedAt: new Date().toISOString(),
+    };
+    this.partnerProfiles.set(organizationId, fresh);
+    return fresh;
+  }
+
+  savePartnerProfile(profile: PartnerProfile): PartnerProfile {
+    this.partnerProfiles.set(profile.organizationId, profile);
+    return profile;
+  }
+
+  listPartnerTenants(organizationId: string): PartnerTenant[] {
+    return this.partnerTenants.filter((row) => row.organizationId === organizationId);
+  }
+
+  savePartnerTenant(row: PartnerTenant): PartnerTenant {
+    const idx = this.partnerTenants.findIndex(
+      (item) => item.organizationId === row.organizationId && item.id === row.id,
+    );
+    if (idx >= 0) this.partnerTenants[idx] = row;
+    else this.partnerTenants.unshift(row);
+    return row;
+  }
+
+  listPartnerWebhooks(organizationId: string): PartnerWebhook[] {
+    return this.partnerWebhooks.filter((row) => row.organizationId === organizationId);
+  }
+
+  addPartnerWebhook(row: PartnerWebhook): PartnerWebhook {
+    this.partnerWebhooks.unshift(row);
+    return row;
+  }
+
+  deletePartnerWebhook(organizationId: string, id: string): boolean {
+    const idx = this.partnerWebhooks.findIndex(
+      (row) => row.organizationId === organizationId && row.id === id,
+    );
+    if (idx < 0) return false;
+    this.partnerWebhooks.splice(idx, 1);
+    return true;
+  }
+
+  listOperatorQueue(): OperatorQueueItem[] {
+    return this.operatorQueue;
+  }
+
+  saveOperatorQueueItem(row: OperatorQueueItem): OperatorQueueItem {
+    const idx = this.operatorQueue.findIndex((item) => item.id === row.id);
+    if (idx >= 0) this.operatorQueue[idx] = row;
+    else this.operatorQueue.unshift(row);
+    return row;
+  }
+
   protected exportOrg(organizationId: string): ModuleSnapshot {
     return {
       files: this.files.filter((row) => row.organizationId === organizationId),
@@ -717,6 +1042,15 @@ export class WorkspaceStore {
       sso: this.sso.get(organizationId) ?? null,
       scimTokens: this.scimTokens.filter((row) => row.organizationId === organizationId),
       scimUsers: this.scimUsers.filter((row) => row.organizationId === organizationId),
+      mailStates: this.mailStates.filter((row) => row.organizationId === organizationId),
+      mailDrafts: this.mailDrafts.filter((row) => row.organizationId === organizationId),
+      mailTemplates: this.mailTemplates.filter((row) => row.organizationId === organizationId),
+      mailRules: this.mailRules.filter((row) => row.organizationId === organizationId),
+      mailPrefs: this.mailPrefs.filter((row) => row.organizationId === organizationId),
+      partnerProfile: this.partnerProfiles.get(organizationId) ?? null,
+      partnerTenants: this.partnerTenants.filter((row) => row.organizationId === organizationId),
+      partnerWebhooks: this.partnerWebhooks.filter((row) => row.organizationId === organizationId),
+      operatorQueue: this.operatorQueue.filter((row) => row.organizationId === organizationId),
     };
   }
 
@@ -742,6 +1076,16 @@ export class WorkspaceStore {
     swap(this.contacts, organizationId, snap.contacts);
     swap(this.scimTokens, organizationId, snap.scimTokens);
     swap(this.scimUsers, organizationId, snap.scimUsers);
+    swap(this.mailStates, organizationId, snap.mailStates ?? []);
+    swap(this.mailDrafts, organizationId, snap.mailDrafts ?? []);
+    swap(this.mailTemplates, organizationId, snap.mailTemplates ?? []);
+    swap(this.mailRules, organizationId, snap.mailRules ?? []);
+    swap(this.mailPrefs, organizationId, snap.mailPrefs ?? []);
+    swap(this.partnerTenants, organizationId, snap.partnerTenants ?? []);
+    swap(this.partnerWebhooks, organizationId, snap.partnerWebhooks ?? []);
+    swap(this.operatorQueue, organizationId, snap.operatorQueue ?? []);
+    if (snap.partnerProfile) this.partnerProfiles.set(organizationId, snap.partnerProfile);
+    else this.partnerProfiles.delete(organizationId);
     if (snap.ai) this.ai.set(organizationId, snap.ai);
     else this.ai.delete(organizationId);
     if (snap.compliance) this.compliance.set(organizationId, snap.compliance);

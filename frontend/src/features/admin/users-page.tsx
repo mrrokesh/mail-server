@@ -1,14 +1,17 @@
+import type { ErrorCode } from '@mrrokesh/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { ShieldOff, UserCheck, UserPlus, Users } from 'lucide-react';
 import { useMemo, useState, type FormEvent } from 'react';
 import { z } from 'zod';
 import { ErrorNote, Field, SelectField } from '../../components/ui/field';
+import { Icon } from '../../components/ui/icon';
+import { Avatar, Badge, EmptyState } from '../../components/ui/primitives';
 import { Sheet } from '../../components/ui/sheet';
 import { SkeletonLines } from '../../components/ui/skeleton';
 import { ApiProblem, readOrFallback, writeOrFallback } from '../../lib/api';
 import { MOCK_USERS } from '../../lib/mock-data';
 import { parseUser, parseUsers, type OrgUser } from '../../lib/schemas';
 import { useDocumentTitle } from '../../lib/use-document-title';
-import type { ErrorCode } from '@mrrokesh/shared';
 
 const INVITE_ROLES = [
   { value: 'billing_admin', label: 'Billing admin' },
@@ -19,7 +22,7 @@ const INVITE_ROLES = [
 ] as const;
 
 const ROLE_FILTERS = [
-  { value: 'all', label: 'All' },
+  { value: 'all', label: 'All members' },
   { value: 'owner', label: 'Owner' },
   ...INVITE_ROLES,
 ];
@@ -43,12 +46,12 @@ const inviteSchema = z.object({
 });
 
 export function UsersPage() {
-  useDocumentTitle('Users');
+  useDocumentTitle('Users & Roles');
   const queryClient = useQueryClient();
   const users = useQuery({
     queryKey: ['users'],
     queryFn: () => readOrFallback('/users', parseUsers, MOCK_USERS),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 60 * 1000,
   });
   const [role, setRole] = useState<string>('all');
   const [query, setQuery] = useState('');
@@ -59,6 +62,7 @@ export function UsersPage() {
   const [email, setEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<(typeof INVITE_ROLES)[number]['value']>('member');
   const [temporaryPassword, setTemporaryPassword] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<ErrorCode | null>(null);
   const [code, setCode] = useState<ErrorCode | null>(null);
   const [pending, setPending] = useState(false);
 
@@ -83,13 +87,6 @@ export function UsersPage() {
     }
     setPending(true);
     setCode(null);
-    const local: OrgUser & { temporaryPassword?: string } = {
-      id: `usr_${crypto.randomUUID()}`,
-      name: parsed.data.name,
-      email: parsed.data.email,
-      role: parsed.data.role,
-      status: 'invited',
-    };
     try {
       const result = await writeOrFallback(
         '/users',
@@ -111,7 +108,7 @@ export function UsersPage() {
             temporaryPassword: typeof password === 'string' ? password : undefined,
           };
         },
-        () => local,
+        () => null as unknown as OrgUser & { temporaryPassword?: string },
       );
       queryClient.setQueryData<OrgUser[]>(['users'], (current = []) => [...current, result.data]);
       setSelectedId(result.data.id);
@@ -127,25 +124,55 @@ export function UsersPage() {
     }
   }
 
+  async function toggleStatus(person: OrgUser) {
+    setActionError(null);
+    const endpoint =
+      person.status === 'suspended'
+        ? `/users/${person.id}/activate`
+        : `/users/${person.id}/suspend`;
+    try {
+      await writeOrFallback(
+        endpoint,
+        { method: 'POST', body: JSON.stringify({}) },
+        (input) => Boolean(input),
+        () => false,
+      );
+      await queryClient.invalidateQueries({ queryKey: ['users'] });
+    } catch (error) {
+      setActionError(error instanceof ApiProblem ? error.code : 'API-SRV-500');
+    }
+  }
+
   return (
     <div className="panes" data-pane={pane}>
       <h1 className="visually-hidden">Users</h1>
       <section className="pane pane-nav" aria-label="Roles">
-        {ROLE_FILTERS.map((item) => (
-          <button
-            key={item.value}
-            type="button"
-            className="folder"
-            aria-current={role === item.value ? 'page' : undefined}
-            onClick={() => {
-              setRole(item.value);
-              setPane('list');
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
+        <button
+          type="button"
+          className="btn btn-primary folder-compose"
+          onClick={() => setOpen(true)}
+        >
+          <Icon icon={UserPlus} size={17} />
+          <span>Invite user</span>
+        </button>
+        <div className="folder-list">
+          {ROLE_FILTERS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              className="folder"
+              aria-current={role === item.value ? 'page' : undefined}
+              onClick={() => {
+                setRole(item.value);
+                setPane('list');
+              }}
+            >
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
       </section>
+
       <section className="pane pane-list" aria-label="People">
         <div className="pane-head">
           <label className="visually-hidden" htmlFor="user-search">
@@ -159,13 +186,18 @@ export function UsersPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
           />
-          <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
-            Send invite
-          </button>
         </div>
-        {users.isPending ? <SkeletonLines /> : null}
+        {users.isPending ? (
+          <div className="pane-note">
+            <SkeletonLines count={4} />
+          </div>
+        ) : null}
         {visible.length === 0 && !users.isPending ? (
-          <p className="read muted">No users in this view.</p>
+          <EmptyState
+            icon={Users}
+            title="No matching users"
+            description="Invite team members to assign roles and mailboxes."
+          />
         ) : null}
         {visible.map((person) => (
           <button
@@ -175,14 +207,29 @@ export function UsersPage() {
             aria-selected={person.id === selected?.id}
             onClick={() => {
               setSelectedId(person.id);
+              setActionError(null);
               setPane('read');
             }}
           >
-            <span>{person.name}</span>
-            <span className="caption muted">{person.status}</span>
+            <span className="cluster-2 truncate">
+              <Avatar name={person.name} size="sm" />
+              <span className="truncate">{person.name}</span>
+            </span>
+            <Badge
+              tone={
+                person.status === 'active'
+                  ? 'success'
+                  : person.status === 'suspended'
+                    ? 'danger'
+                    : 'warning'
+              }
+            >
+              {person.status}
+            </Badge>
           </button>
         ))}
       </section>
+
       <article className="pane pane-read">
         {selected ? (
           <div className="read">
@@ -193,24 +240,69 @@ export function UsersPage() {
             >
               Back to users
             </button>
-            <h2 className="h3">{selected.name}</h2>
-            <p className="break">{selected.email}</p>
-            <p className="caption muted">
-              {roleLabel(selected.role)} · {selected.status}
-            </p>
+            <div className="spread">
+              <div className="cluster">
+                <Avatar name={selected.name} size="lg" />
+                <div>
+                  <h2 className="h3">{selected.name}</h2>
+                  <p className="caption muted break">{selected.email}</p>
+                </div>
+              </div>
+              <div className="cluster-2">
+                <Badge tone="brand">{roleLabel(selected.role)}</Badge>
+                <Badge tone={selected.status === 'active' ? 'success' : 'danger'}>
+                  {selected.status}
+                </Badge>
+              </div>
+            </div>
+
             {temporaryPassword && selected.id === selectedId ? (
-              <p className="break">Temporary password: {temporaryPassword}</p>
+              <div className="card stack-2">
+                <p className="caption strong">Temporary password (shown once)</p>
+                <p className="mono break">{temporaryPassword}</p>
+              </div>
             ) : null}
+
+            {canonicalRole(selected.role) !== 'owner' ? (
+              <div className="card spread">
+                <div className="stack-2">
+                  <p className="strong">Account lifecycle</p>
+                  <p className="caption muted">
+                    {selected.status === 'suspended'
+                      ? 'Suspended accounts cannot sign in or send mail.'
+                      : 'Suspending revokes active sessions immediately.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className={
+                    selected.status === 'suspended'
+                      ? 'btn btn-quiet btn-sm'
+                      : 'btn btn-danger btn-sm'
+                  }
+                  onClick={() => void toggleStatus(selected)}
+                >
+                  <Icon icon={selected.status === 'suspended' ? UserCheck : ShieldOff} size={15} />
+                  <span>{selected.status === 'suspended' ? 'Activate user' : 'Suspend user'}</span>
+                </button>
+              </div>
+            ) : null}
+            {actionError ? <ErrorNote code={actionError} /> : null}
           </div>
         ) : (
-          <p className="read muted">Select a person.</p>
+          <EmptyState
+            icon={Users}
+            title="Select a person"
+            description="Choose a team member to inspect their role, status, and lifecycle controls."
+          />
         )}
       </article>
+
       <Sheet open={open} title="Invite user" onClose={() => setOpen(false)}>
         <form className="sheet-form" onSubmit={onInvite} noValidate>
-          <Field label="Name" value={name} onChange={(event) => setName(event.target.value)} />
+          <Field label="Full name" value={name} onChange={(event) => setName(event.target.value)} />
           <Field
-            label="Email"
+            label="Email address"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -231,7 +323,7 @@ export function UsersPage() {
           </SelectField>
           {code ? <ErrorNote code={code} /> : null}
           <button className="btn btn-primary" type="submit" disabled={pending}>
-            {pending ? 'Sending invite' : 'Send invite'}
+            {pending ? 'Sending invite...' : 'Send invite'}
           </button>
         </form>
       </Sheet>

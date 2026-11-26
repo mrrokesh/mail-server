@@ -12,6 +12,8 @@ import { registerApi } from './routes/register';
 import { registerV1 } from './routes/v1-modules';
 import { registerWopi } from './wopi/routes';
 import { registerV2 } from './routes/v2-modules';
+import { registerMailWorkspace } from './routes/mail-workspace';
+import { registerPortals } from './routes/portals';
 import type { ControlStore } from './store/types';
 import { MemoryStore } from './store/memory';
 import { WorkspaceStore } from './v1/workspace';
@@ -122,6 +124,8 @@ export function buildServer(options?: BuildOptions) {
   registerV1(app);
   registerWopi(app);
   registerV2(app);
+  registerMailWorkspace(app);
+  registerPortals(app);
 
   app.addHook('onResponse', async () => {
     try {
